@@ -87,7 +87,7 @@ elif menu == "🔍 Live Scraper":
 
     # Platform selector
     platform = st.selectbox("Choose Marketplace", ["Jumia Kenya", "Alibaba"])
-    search_term = st.text_input("What product do you want to search for?", placeholder="e.g. thinkpad, smartwatch, shoes")
+    search_term = st.text_input("What product do you want to search for?", placeholder="e.g. samsung phone, thinkpad, smartwatch")
 
     if st.button("Start Live Scraping", type="primary"):
         if not search_term:
@@ -96,9 +96,19 @@ elif menu == "🔍 Live Scraper":
             with st.spinner(f"Scraping products from {platform} for '{search_term}'..."):
                 try:
                     scraped_data = []
+                    
+                    # Enhanced browser-mimicking headers to bypass anti-bot checks
                     headers = {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        "Accept-Language": "en-US,en;q=0.9"
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Accept-Encoding": "gzip, deflate, br",
+                        "Connection": "keep-alive",
+                        "Upgrade-Insecure-Requests": "1",
+                        "Sec-Fetch-Dest": "document",
+                        "Sec-Fetch-Mode": "navigate",
+                        "Sec-Fetch-Site": "none",
+                        "Sec-Fetch-User": "?1"
                     }
 
                     if platform == "Jumia Kenya":
