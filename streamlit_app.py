@@ -62,7 +62,7 @@ menu = st.sidebar.selectbox("Navigation", ["🏠 Dashboard", "🔍 Live Scraper"
 # 🏠 Dashboard View
 if menu == "🏠 Dashboard":
     st.subheader("Universal Scraper Control Center")
-    st.markdown("Welcome back! Use the live scraper to search and pull real product items from the web.")
+    st.markdown("Welcome back! Use the live scraper to search and pull real product items from online marketplaces.")
     
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -82,19 +82,22 @@ if menu == "🏠 Dashboard":
 
 # 🔍 Live Scraper View
 elif menu == "🔍 Live Scraper":
-    st.subheader("🔍 Universal Web Product Scraper")
-    st.markdown("Type any product name below to fetch real online listings and prices.")
+    st.subheader("🔍 Multi-Platform Live Scraper")
+    st.markdown("Select your target marketplace and search for any product in real-time.")
 
+    # Restored Marketplace Selector dropdown
+    platform = st.selectbox("Choose Marketplace", ["Jumia Kenya", "Alibaba", "Jiji Kenya"])
     search_term = st.text_input("What product do you want to search for?", placeholder="e.g. samsung smart tv, thinkpad laptop, nike shoes")
 
     if st.button("Start Live Scraping", type="primary"):
         if not search_term:
             st.warning("Please enter a search term first.")
         else:
-            with st.spinner(f"Fetching real listings for '{search_term}'..."):
+            with st.spinner(f"Scraping live results from {platform} for '{search_term}'..."):
                 try:
                     scraped_data = []
-                    query = urllib.parse.quote_plus(search_term + " price buy Kenya")
+                    domain_query = "jumia.co.ke" if "Jumia" in platform else ("alibaba.com" if "Alibaba" in platform else "jiji.co.ke")
+                    query = urllib.parse.quote_plus(f"{search_term} site:{domain_query}")
                     target_url = f"https://html.duckduckgo.com/html/?q={query}"
                     
                     headers = {
@@ -107,22 +110,22 @@ elif menu == "🔍 Live Scraper":
                         soup = BeautifulSoup(response.text, 'html.parser')
                         results = soup.select(".result")
                         
-                        for res in results[:12]:
+                        for res in results[:10]:
                             title_elem = res.select_one(".result__title")
                             snippet_elem = res.select_one(".result__snippet")
                             link_elem = res.select_one(".result__url")
                             
                             if title_elem and link_elem:
                                 title = title_elem.get_text(strip=True)
-                                snippet = snippet_elem.get_text(strip=True) if snippet_elem else "Check link for details"
+                                snippet = snippet_elem.get_text(strip=True) if snippet_elem else "Price available on store page"
                                 url = link_elem.get('href', '#')
                                 
                                 scraped_data.append({
                                     "title": title,
-                                    "price": snippet[:120] + "...",
-                                    "location": "Online Web Store",
+                                    "price": snippet[:100],
+                                    "location": platform,
                                     "url": url,
-                                    "search_query": search_term
+                                    "search_query": f"{platform}: {search_term}"
                                 })
 
                     if scraped_data:
@@ -136,11 +139,11 @@ elif menu == "🔍 Live Scraper":
                         conn.commit()
                         conn.close()
 
-                        st.success(f"Successfully fetched and saved {len(scraped_data)} real results for '{search_term}'!")
+                        st.success(f"Successfully scraped and saved {len(scraped_data)} items from {platform}!")
                         df = pd.DataFrame(scraped_data)
                         st.dataframe(df)
                     else:
-                        st.warning(f"No results found for '{search_term}'. Try a different keyword.")
+                        st.warning(f"No results found on {platform} for '{search_term}'. Try another keyword.")
 
                 except Exception as e:
                     st.error(f"An error occurred: {e}")
@@ -167,5 +170,5 @@ elif menu == "📂 Saved Data":
 # ⚙️ Preferences View
 elif menu == "⚙️ Preferences":
     st.subheader("⚙️ System Preferences")
-    st.text_input("Search Gateway", value="Universal Web Parser")
+    st.text_input("Default Marketplace", value="Jumia Kenya")
     st.button("Save Preferences")
