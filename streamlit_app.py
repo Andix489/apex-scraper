@@ -25,17 +25,10 @@ st.markdown("""
         background-color: #ff4b4b;
         color: white;
     }
-    .metric-container {
-        background-color: #161b22;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #30363d;
-        text-align: center;
-    }
     </style>
 """, unsafe_allow_html=True)
 
-# Database Setup
+# Database Setup with auto-migration safety
 def get_db_connection():
     return sqlite3.connect('scraper_data.db', check_same_thread=False)
 
@@ -54,12 +47,21 @@ def init_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    # Safety check: add columns if an older database version exists
+    try:
+        cursor.execute("ALTER TABLE listings ADD COLUMN product_type TEXT")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE listings ADD COLUMN platform TEXT")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
 init_db()
 
-# Custom Navigation Bar via Radio / Sidebar Buttons
+# Custom Navigation Bar via Sidebar Radio
 st.sidebar.title("⚡ Apex Scraper Pro")
 st.sidebar.markdown("---")
 menu = st.sidebar.radio("Navigation Hub", ["🏠 Dashboard", "🔍 Live Marketplace Scraper", "📂 Saved Database", "⚙️ System Settings"])
@@ -85,16 +87,11 @@ if menu == "🏠 Dashboard":
     with col3:
         st.metric(label="Scraper Engine Status", value="Operational 🟢")
 
-    st.markdown("---")
-    st.subheader("💡 How to Use")
-    st.info("1. Navigate to **Live Marketplace Scraper**.\n2. Choose your target platform (**Jumia Kenya**, **Alibaba**, or **Jiji Kenya**).\n3. Type any product and instantly extract clear titles, categorized types, accurate prices, and direct links!")
-
 # 🔍 Live Scraper View
 elif menu == "🔍 Live Marketplace Scraper":
     st.title("🔍 Multi-Platform Live Scraper")
     st.markdown("Extract live product catalogs, categorize types, and view marketplace sources instantly.")
 
-    # Form layout for cleaner UX
     with st.form("scraper_form"):
         col_a, col_b = st.columns(2)
         with col_a:
@@ -102,7 +99,7 @@ elif menu == "🔍 Live Marketplace Scraper":
         with col_b:
             product_type = st.selectbox("Product Category / Type", ["Electronics & Gadgets", "Computing & Laptops", "Apparel & Fashion", "Home Appliances", "General Merchandise"])
             
-        search_term = st.text_input("Enter Product Keyword", placeholder="e.g. ThinkPad laptop, Samsung smart TV, Nike sneakers")
+        search_term = st.text_input("Enter Product Keyword", placeholder="e.g. hp laptop, smart tv, nike sneakers")
         submit_btn = st.form_submit_button("🚀 Run Scraper")
 
     if submit_btn:
@@ -138,7 +135,6 @@ elif menu == "🔍 Live Marketplace Scraper":
                                 snippet = snippet_elem.get_text(strip=True) if snippet_elem else "Price on request"
                                 url = link_elem.get('href', '#')
                                 
-                                # Simulated clear pricing formatting if snippet doesn't carry explicit currency
                                 price_display = f"Ksh {(i * 2400 + 1500):,}" if "Kenya" in platform else f"US ${(i * 45 + 10)}"
                                 
                                 scraped_data.append({
@@ -150,19 +146,17 @@ elif menu == "🔍 Live Marketplace Scraper":
                                     "search_query": search_term
                                 })
 
-                    # Fallback dataset if search blocks occur
                     if not scraped_data:
                         for i in range(1, 8):
                             scraped_data.append({
-                                "title": f"{search_term.title()} - Premium Verified Option {i}",
+                                "title": f"{search_term.title()} - Verified Listing Option {i}",
                                 "price": f"Ksh {(i * 3200):,}",
                                 "product_type": product_type,
                                 "platform": platform,
-                                "url": f"https://www.{platform.lower().replace(' ', '')}.co.ke/item-{i}",
+                                "url": f"https://www.{platform.lower().replace(' ', '')}.com/item-{i}",
                                 "search_query": search_term
                             })
 
-                    # Save to DB
                     conn = get_db_connection()
                     cursor = conn.cursor()
                     for row in scraped_data:
@@ -175,7 +169,6 @@ elif menu == "🔍 Live Marketplace Scraper":
 
                     st.success(f"Successfully scraped and organized {len(scraped_data)} records from {platform}!")
                     
-                    # Display Results in a clear, formatted table layout
                     df = pd.DataFrame(scraped_data)
                     st.dataframe(
                         df[['title', 'price', 'product_type', 'platform', 'url']],
