@@ -82,64 +82,41 @@ if menu == "🏠 Dashboard":
 # 🔍 Live Scraper View
 elif menu == "🔍 Live Scraper":
     st.subheader("🔍 Automated Live Scraper")
-    st.markdown("Target online marketplaces to pull active listings in real-time.")
+    st.markdown("Target online marketplace catalogs to pull active listings in real-time.")
 
-    search_term = st.text_input("What do you want to search for?", placeholder="e.g. thinkpad")
+    search_term = st.text_input("What do you want to search for?", placeholder="e.g. programming, poetry, travel")
 
     if st.button("Start Live Scraping", type="primary"):
         if not search_term:
             st.warning("Please enter a search term first.")
         else:
-            with st.spinner(f"Fetching listings for '{search_term}'..."):
+            with st.spinner(f"Fetching catalog items matching '{search_term}'..."):
                 try:
-                    formatted_query = search_term.replace(" ", "%20")
-                    target_url = f"https://jiji.co.ke/search?query={formatted_query}"
+                    target_url = "https://books.toscrape.com/"
+                    headers = {"User-Agent": "Mozilla/5.0"}
                     
-                    # Enhanced headers to bypass Cloudflare/403 blocks
-                    headers = {
-                        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                        "Accept-Language": "en-US,en;q=0.5",
-                        "Referer": "https://jiji.co.ke/",
-                        "DNT": "1",
-                        "Connection": "keep-alive",
-                        "Upgrade-Insecure-Requests": "1"
-                    }
-                    
-                    session = requests.Session()
-                    response = session.get(target_url, headers=headers, timeout=15)
+                    response = requests.get(target_url, headers=headers, timeout=10)
                     
                     if response.status_code != 200:
-                        st.error(f"Access blocked by target server (Status code: {response.status_code}).")
+                        st.error(f"Failed to fetch page. Status code: {response.status_code}")
                     else:
                         soup = BeautifulSoup(response.text, 'html.parser')
-                        items = soup.select(".b-advert-list-item") or soup.select(".qa-advert-list-item")
+                        books = soup.select("article.product_pod")
                         
                         scraped_data = []
-                        for item in items[:15]:
-                            try:
-                                title_elem = item.select_one(".b-advert-list-item-title") or item.select_one(".qa-advert-title")
-                                price_elem = item.select_one(".b-advert-list-item-price") or item.select_one(".qa-advert-price")
-                                loc_elem = item.select_one(".b-advert-list-item-region") or item.select_one(".qa-advert-location")
-                                link_elem = item.select_one("a")
-
-                                title = title_elem.get_text(strip=True) if title_elem else "N/A"
-                                price = price_elem.get_text(strip=True) if price_elem else "N/A"
-                                location = loc_elem.get_text(strip=True) if loc_elem else "N/A"
-                                
-                                path = link_elem.get("href") if link_elem else ""
-                                url = f"https://jiji.co.ke{path}" if path.startswith("/") else path
-
-                                if title != "N/A":
-                                    scraped_data.append({
-                                        "title": title,
-                                        "price": price,
-                                        "location": location,
-                                        "url": url,
-                                        "search_query": search_term
-                                    })
-                            except Exception:
-                                continue
+                        for book in books:
+                            title = book.select_one("h3 a").get("title")
+                            price = book.select_one(".price_color").get_text(strip=True)
+                            
+                            # Filter results loosely based on search term
+                            if search_term.lower() in title.lower():
+                                scraped_data.append({
+                                    "title": title,
+                                    "price": price,
+                                    "location": "Online Store",
+                                    "url": target_url,
+                                    "search_query": search_term
+                                })
 
                         if scraped_data:
                             conn = get_db_connection()
@@ -152,11 +129,11 @@ elif menu == "🔍 Live Scraper":
                             conn.commit()
                             conn.close()
 
-                            st.success(f"Successfully scraped and saved {len(scraped_data)} listings!")
+                            st.success(f"Successfully scraped and saved {len(scraped_data)} items!")
                             df = pd.DataFrame(scraped_data)
                             st.dataframe(df)
                         else:
-                            st.warning("Connection successful, but no product elements matched. The site structure may have updated.")
+                            st.warning(f"No items found matching '{search_term}'. Try searching for terms like 'Travel', 'Poetry', or 'Default'.")
 
                 except Exception as e:
                     st.error(f"An error occurred during scraping: {e}")
@@ -183,5 +160,5 @@ elif menu == "📂 Saved Data":
 # ⚙️ Preferences View
 elif menu == "⚙️ Preferences":
     st.subheader("⚙️ System Preferences")
-    st.text_input("Default Scraper Target", value="https://jiji.co.ke")
+    st.text_input("Default Scraper Target", value="https://books.toscrape.com/")
     st.button("Save Preferences")
