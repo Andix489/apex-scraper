@@ -1,12 +1,8 @@
 import streamlit as st
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 import sqlite3
-import time
 import pandas as pd
+import requests
+from bs4 import BeautifulSoup
 
 # Page Configuration
 st.set_page_config(
@@ -16,7 +12,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS Styling for a polished look
+# Custom CSS Styling
 st.markdown("""
     <style>
     .main {
@@ -35,12 +31,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Database Connection Helper
+# Database Setup
 def get_db_connection():
-    conn = sqlite3.connect('scraper_data.db', check_same_thread=False)
-    return conn
+    return sqlite3.connect('scraper_data.db', check_same_thread=False)
 
-# Initialize Database Table
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -67,7 +61,7 @@ menu = st.sidebar.selectbox("Navigation", ["🏠 Dashboard", "🔍 Live Scraper"
 # 🏠 Dashboard View
 if menu == "🏠 Dashboard":
     st.subheader("Universal Scraper Control Center")
-    st.markdown("Welcome back! Use the sidebar to execute real-time scraping tasks, manage saved classifieds data, or adjust preferences.")
+    st.markdown("Welcome back! Use the sidebar to execute real-time scraping tasks.")
     
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -85,9 +79,6 @@ if menu == "🏠 Dashboard":
     with col3:
         st.metric(label="System Status", value="Online 🟢")
 
-    st.markdown("---")
-    st.info("💡 **Tip:** Go to **Live Scraper** to pull fresh listings from classified sites directly into your database.")
-
 # 🔍 Live Scraper View
 elif menu == "🔍 Live Scraper":
     st.subheader("🔍 Automated Live Scraper")
@@ -99,95 +90,80 @@ elif menu == "🔍 Live Scraper":
         if not search_term:
             st.warning("Please enter a search term first.")
         else:
-            with st.spinner(f"Launching browser and scraping listings for '{search_term}'..."):
-                options = webdriver.ChromeOptions()
-                options.add_argument("--headless")
-                options.add_argument("--no-sandbox")
-                options.add_argument("--disable-dev-shm-usage")
-                options.add_argument("--disable-gpu")
-                options.add_argument("--window-size=1920,1080")
-                options.add_argument("--disable-blink-features=AutomationControlled")
-                options.add_experimental_option("excludeSwitches", ["enable-automation"])
-                options.add_experimental_option("useAutomationExtension", False)
-                options.binary_location = "/usr/bin/chromium"
-
-                service = webdriver.chrome.service.Service("/usr/bin/chromedriver")
-                driver = webdriver.Chrome(service=service, options=options)
-
+            with st.spinner(f"Fetching listings for '{search_term}'..."):
                 try:
-                    driver.get("https://jiji.co.ke")
-                    time.sleep(2)
-
-                    wait = WebDriverWait(driver, 10)
-                    search_box = wait.until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, "input.qa-search-input"))
-                    )
-                    search_box.clear()
-                    search_box.send_keys(search_term)
-                    search_box.send_keys(Keys.RETURN)
-                    time.sleep(3)
-
-                    # Extract listings
-                    items = driver.find_elements(By.CSS_SELECTOR, "div.qa-advert-list-item")
-                    scraped_data = []
-
-                    for item in items[:10]: # Limit to top 10 for performance
-                        try:
-                            title_elem = item.find_element(By.CSS_SELECTOR, ".qa-advert-title")
-                            price_elem = item.find_element(By.CSS_SELECTOR, ".qa-advert-price")
-                            loc_elem = item.find_element(By.CSS_SELECTOR, ".qa-advert-location")
-                            link_elem = item.find_element(By.CSS_SELECTOR, "a.qa-advert-list-item-link")
-
-                            title = title_elem.text if title_elem else "N/A"
-                            price = price_elem.text if price_elem else "N/A"
-                            location = loc_elem.text if loc_elem else "N/A"
-                            url = link_elem.get_attribute("href") if link_elem else "N/A"
-
-                            scraped_data.append({
-                                "title": title,
-                                "price": price,
-                                "location": location,
-                                "url": url,
-                                "search_query": search_term
-                            })
-                        except Exception:
-                            continue
-
-                    driver.quit()
-
-                    if scraped_data:
-                        conn = get_db_connection()
-                        cursor = conn.cursor()
-                        for row in scraped_data:
-                            cursor.execute('''
-                                INSERT INTO listings (title, price, location, url, search_query)
-                                VALUES (?, ?, ?, ?, ?)
-                            ''', (row['title'], row['price'], row['location'], row['url'], row['search_query']))
-                        conn.commit()
-                        conn.close()
-
-                        st.success(f"Successfully scraped and saved {len(scraped_data)} listings!")
-                        df = pd.DataFrame(scraped_data)
-                        st.dataframe(df)
+                    # Format search query for Jiji URL structure
+                    formatted_query = search_term.replace(" ", "-")
+                    target_url = f"https://jiji.co.ke/search?query={formatted_query}"
+                    
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Accept-Language": "en-US,en;q=0.9"
+                    }
+                    
+                    response = requests.get(target_url, headers=headers, timeout=10)
+                    
+                    if response.status_code != 200:
+                        st.error(f"Failed to fetch page. Status code: {response.status_code}")
                     else:
-                        st.warning("No listings found matching your search term.")
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        items = soup.select(".b-advert-list-item") or soup.select("div.qa-advert-list-item")
+                        
+                        scraped_data = []
+                        for item in items[:15]:
+                            try:
+                                title_elem = item.select_name = item.select_one(".b-advert-list-item-title") or item.select_one(".qa-advert-title")
+                                price_elem = item.select_one(".b-advert-list-item-price") or item.select_one(".qa-advert-price")
+                                loc_elem = item.select_one(".b-advert-list-item-region") or item.select_one(".qa-advert-location")
+                                link_elem = item.select_one("a")
+
+                                title = title_elem.get_text(strip=True) if title_elem else "N/A"
+                                price = price_elem.get_text(strip=True) if price_elem else "N/A"
+                                location = loc_elem.get_text(strip=True) if loc_elem else "N/A"
+                                
+                                path = link_elem.get("href") if link_elem else ""
+                                url = f"https://jiji.co.ke{path}" if path.startswith("/") else path
+
+                                if title != "N/A":
+                                    scraped_data.append({
+                                        "title": title,
+                                        "price": price,
+                                        "location": location,
+                                        "url": url,
+                                        "search_query": search_term
+                                    })
+                            except Exception:
+                                continue
+
+                        if scraped_data:
+                            conn = get_db_connection()
+                            cursor = conn.cursor()
+                            for row in scraped_data:
+                                cursor.execute('''
+                                    INSERT INTO listings (title, price, location, url, search_query)
+                                    VALUES (?, ?, ?, ?, ?)
+                                ''', (row['title'], row['price'], row['location'], row['url'], row['search_query']))
+                            conn.commit()
+                            conn.close()
+
+                            st.success(f"Successfully scraped and saved {len(scraped_data)} listings!")
+                            df = pd.DataFrame(scraped_data)
+                            st.dataframe(df)
+                        else:
+                            st.warning("No listings found or page structure blocked. Try a different search term.")
 
                 except Exception as e:
-                    driver.quit()
                     st.error(f"An error occurred during scraping: {e}")
 
 # 📂 Saved Data View
 elif menu == "📂 Saved Data":
     st.subheader("📂 Saved Database Records")
-    st.markdown("Browse, filter, or export your historical scraped data.")
-
     conn = get_db_connection()
     df_all = pd.read_sql("SELECT * FROM listings ORDER BY timestamp DESC", conn)
     conn.close()
 
     if not df_all.empty:
         st.dataframe(df_all)
-        
         csv = df_all.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="Download Data as CSV",
@@ -196,12 +172,10 @@ elif menu == "📂 Saved Data":
             mime='text/csv',
         )
     else:
-        st.info("No saved records in the database yet. Run a live scrape to populate data!")
+        st.info("No saved records in the database yet.")
 
 # ⚙️ Preferences View
 elif menu == "⚙️ Preferences":
     st.subheader("⚙️ System Preferences")
-    st.markdown("Configure tool behavior and model settings.")
     st.text_input("Default Scraper Target", value="https://jiji.co.ke")
-    st.selectbox("Default LLM Model", ["gemini-1.5-flash", "gemini-1.5-pro"])
     st.button("Save Preferences")
