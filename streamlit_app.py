@@ -1,7 +1,9 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-import random
+import requests
+from bs4 import BeautifulSoup
+import urllib.parse
 
 # Page Configuration
 st.set_page_config(
@@ -60,7 +62,7 @@ menu = st.sidebar.selectbox("Navigation", ["🏠 Dashboard", "🔍 Live Scraper"
 # 🏠 Dashboard View
 if menu == "🏠 Dashboard":
     st.subheader("Universal Scraper Control Center")
-    st.markdown("Welcome back! Use the live scraper to pull product catalogs from online marketplaces.")
+    st.markdown("Welcome back! Use the live scraper to search and pull real product items from the web.")
     
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -80,45 +82,68 @@ if menu == "🏠 Dashboard":
 
 # 🔍 Live Scraper View
 elif menu == "🔍 Live Scraper":
-    st.subheader("🔍 Multi-Platform Live Scraper")
-    st.markdown("Select your target marketplace and search for any product in real-time.")
+    st.subheader("🔍 Universal Web Product Scraper")
+    st.markdown("Type any product name below to fetch real online listings and prices.")
 
-    platform = st.selectbox("Choose Marketplace", ["Jumia Kenya", "Alibaba", "Jiji Kenya"])
-    search_term = st.text_input("What product do you want to search for?", placeholder="e.g. thinkpad, samsung phone, smartwatch")
+    search_term = st.text_input("What product do you want to search for?", placeholder="e.g. samsung smart tv, thinkpad laptop, nike shoes")
 
     if st.button("Start Live Scraping", type="primary"):
         if not search_term:
             st.warning("Please enter a search term first.")
         else:
-            with st.spinner(f"Connecting to {platform} secure gateway for '{search_term}'..."):
-                # Generate dynamic mock listings matching user search to bypass server blocks
-                scraped_data = []
-                base_prices = [15000, 24999, 45000, 12000, 32500, 89000, 5400]
-                
-                for i in range(1, 9):
-                    price_val = random.choice(base_prices) + (i * 250)
-                    scraped_data.append({
-                        "title": f"{search_term.title()} - Model Pro Gen {i}",
-                        "price": f"Ksh {price_val:,}",
-                        "location": f"{platform} Verified Seller",
-                        "url": f"https://{platform.lower().replace(' ', '')}.co.ke/catalog-item-{i}",
-                        "search_query": f"{platform}: {search_term}"
-                    })
+            with st.spinner(f"Fetching real listings for '{search_term}'..."):
+                try:
+                    scraped_data = []
+                    query = urllib.parse.quote_plus(search_term + " price buy Kenya")
+                    target_url = f"https://html.duckduckgo.com/html/?q={query}"
+                    
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    }
+                    
+                    response = requests.get(target_url, headers=headers, timeout=15)
+                    
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.text, 'html.parser')
+                        results = soup.select(".result")
+                        
+                        for res in results[:12]:
+                            title_elem = res.select_one(".result__title")
+                            snippet_elem = res.select_one(".result__snippet")
+                            link_elem = res.select_one(".result__url")
+                            
+                            if title_elem and link_elem:
+                                title = title_elem.get_text(strip=True)
+                                snippet = snippet_elem.get_text(strip=True) if snippet_elem else "Check link for details"
+                                url = link_elem.get('href', '#')
+                                
+                                scraped_data.append({
+                                    "title": title,
+                                    "price": snippet[:120] + "...",
+                                    "location": "Online Web Store",
+                                    "url": url,
+                                    "search_query": search_term
+                                })
 
-                # Save to Database
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                for row in scraped_data:
-                    cursor.execute('''
-                        INSERT INTO listings (title, price, location, url, search_query)
-                        VALUES (?, ?, ?, ?, ?)
-                    ''', (row['title'], row['price'], row['location'], row['url'], row['search_query']))
-                conn.commit()
-                conn.close()
+                    if scraped_data:
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        for row in scraped_data:
+                            cursor.execute('''
+                                INSERT INTO listings (title, price, location, url, search_query)
+                                VALUES (?, ?, ?, ?, ?)
+                            ''', (row['title'], row['price'], row['location'], row['url'], row['search_query']))
+                        conn.commit()
+                        conn.close()
 
-                st.success(f"Successfully scraped and saved {len(scraped_data)} live items from {platform}!")
-                df = pd.DataFrame(scraped_data)
-                st.dataframe(df)
+                        st.success(f"Successfully fetched and saved {len(scraped_data)} real results for '{search_term}'!")
+                        df = pd.DataFrame(scraped_data)
+                        st.dataframe(df)
+                    else:
+                        st.warning(f"No results found for '{search_term}'. Try a different keyword.")
+
+                except Exception as e:
+                    st.error(f"An error occurred: {e}")
 
 # 📂 Saved Data View
 elif menu == "📂 Saved Data":
@@ -142,5 +167,5 @@ elif menu == "📂 Saved Data":
 # ⚙️ Preferences View
 elif menu == "⚙️ Preferences":
     st.subheader("⚙️ System Preferences")
-    st.text_input("Default Marketplace", value="Jumia Kenya")
+    st.text_input("Search Gateway", value="Universal Web Parser")
     st.button("Save Preferences")
