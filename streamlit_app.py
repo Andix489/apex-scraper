@@ -82,61 +82,56 @@ if menu == "🏠 Dashboard":
 # 🔍 Live Scraper View
 elif menu == "🔍 Live Scraper":
     st.subheader("🔍 Automated Live Scraper")
-    st.markdown("Target online marketplace catalogs to pull active listings in real-time.")
+    st.markdown("Pull live catalog listings instantly into your database.")
 
-    search_term = st.text_input("What do you want to search for?", placeholder="e.g. programming, poetry, travel")
+    search_term = st.text_input("Label this scrape batch:", value="Catalog Batch 1", placeholder="e.g. Batch 1")
 
     if st.button("Start Live Scraping", type="primary"):
-        if not search_term:
-            st.warning("Please enter a search term first.")
-        else:
-            with st.spinner(f"Fetching catalog items matching '{search_term}'..."):
-                try:
-                    target_url = "https://books.toscrape.com/"
-                    headers = {"User-Agent": "Mozilla/5.0"}
+        with st.spinner("Fetching catalog items..."):
+            try:
+                target_url = "https://books.toscrape.com/"
+                headers = {"User-Agent": "Mozilla/5.0"}
+                
+                response = requests.get(target_url, headers=headers, timeout=10)
+                
+                if response.status_code != 200:
+                    st.error(f"Failed to fetch page. Status code: {response.status_code}")
+                else:
+                    soup = BeautifulSoup(response.text, 'html.parser')
+                    books = soup.select("article.product_pod")
                     
-                    response = requests.get(target_url, headers=headers, timeout=10)
-                    
-                    if response.status_code != 200:
-                        st.error(f"Failed to fetch page. Status code: {response.status_code}")
-                    else:
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        books = soup.select("article.product_pod")
+                    scraped_data = []
+                    for book in books:
+                        title = book.select_one("h3 a").get("title")
+                        price = book.select_one(".price_color").get_text(strip=True)
                         
-                        scraped_data = []
-                        for book in books:
-                            title = book.select_one("h3 a").get("title")
-                            price = book.select_one(".price_color").get_text(strip=True)
-                            
-                            # Filter results loosely based on search term
-                            if search_term.lower() in title.lower():
-                                scraped_data.append({
-                                    "title": title,
-                                    "price": price,
-                                    "location": "Online Store",
-                                    "url": target_url,
-                                    "search_query": search_term
-                                })
+                        scraped_data.append({
+                            "title": title,
+                            "price": price,
+                            "location": "Online Store",
+                            "url": target_url,
+                            "search_query": search_term
+                        })
 
-                        if scraped_data:
-                            conn = get_db_connection()
-                            cursor = conn.cursor()
-                            for row in scraped_data:
-                                cursor.execute('''
-                                    INSERT INTO listings (title, price, location, url, search_query)
-                                    VALUES (?, ?, ?, ?, ?)
-                                ''', (row['title'], row['price'], row['location'], row['url'], row['search_query']))
-                            conn.commit()
-                            conn.close()
+                    if scraped_data:
+                        conn = get_db_connection()
+                        cursor = conn.cursor()
+                        for row in scraped_data:
+                            cursor.execute('''
+                                INSERT INTO listings (title, price, location, url, search_query)
+                                VALUES (?, ?, ?, ?, ?)
+                            ''', (row['title'], row['price'], row['location'], row['url'], row['search_query']))
+                        conn.commit()
+                        conn.close()
 
-                            st.success(f"Successfully scraped and saved {len(scraped_data)} items!")
-                            df = pd.DataFrame(scraped_data)
-                            st.dataframe(df)
-                        else:
-                            st.warning(f"No items found matching '{search_term}'. Try searching for terms like 'Travel', 'Poetry', or 'Default'.")
+                        st.success(f"Successfully scraped and saved {len(scraped_data)} items!")
+                        df = pd.DataFrame(scraped_data)
+                        st.dataframe(df)
+                    else:
+                        st.warning("No items found on the target page.")
 
-                except Exception as e:
-                    st.error(f"An error occurred during scraping: {e}")
+            except Exception as e:
+                st.error(f"An error occurred during scraping: {e}")
 
 # 📂 Saved Data View
 elif menu == "📂 Saved Data":
