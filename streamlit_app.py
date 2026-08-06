@@ -92,27 +92,33 @@ elif menu == "🔍 Live Scraper":
         else:
             with st.spinner(f"Fetching listings for '{search_term}'..."):
                 try:
-                    # Format search query for Jiji URL structure
-                    formatted_query = search_term.replace(" ", "-")
+                    formatted_query = search_term.replace(" ", "%20")
                     target_url = f"https://jiji.co.ke/search?query={formatted_query}"
                     
+                    # Enhanced headers to bypass Cloudflare/403 blocks
                     headers = {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                        "Accept-Language": "en-US,en;q=0.9"
+                        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.5",
+                        "Referer": "https://jiji.co.ke/",
+                        "DNT": "1",
+                        "Connection": "keep-alive",
+                        "Upgrade-Insecure-Requests": "1"
                     }
                     
-                    response = requests.get(target_url, headers=headers, timeout=10)
+                    session = requests.Session()
+                    response = session.get(target_url, headers=headers, timeout=15)
                     
                     if response.status_code != 200:
-                        st.error(f"Failed to fetch page. Status code: {response.status_code}")
+                        st.error(f"Access blocked by target server (Status code: {response.status_code}).")
                     else:
                         soup = BeautifulSoup(response.text, 'html.parser')
-                        items = soup.select(".b-advert-list-item") or soup.select("div.qa-advert-list-item")
+                        items = soup.select(".b-advert-list-item") or soup.select(".qa-advert-list-item")
                         
                         scraped_data = []
                         for item in items[:15]:
                             try:
-                                title_elem = item.select_name = item.select_one(".b-advert-list-item-title") or item.select_one(".qa-advert-title")
+                                title_elem = item.select_one(".b-advert-list-item-title") or item.select_one(".qa-advert-title")
                                 price_elem = item.select_one(".b-advert-list-item-price") or item.select_one(".qa-advert-price")
                                 loc_elem = item.select_one(".b-advert-list-item-region") or item.select_one(".qa-advert-location")
                                 link_elem = item.select_one("a")
@@ -150,7 +156,7 @@ elif menu == "🔍 Live Scraper":
                             df = pd.DataFrame(scraped_data)
                             st.dataframe(df)
                         else:
-                            st.warning("No listings found or page structure blocked. Try a different search term.")
+                            st.warning("Connection successful, but no product elements matched. The site structure may have updated.")
 
                 except Exception as e:
                     st.error(f"An error occurred during scraping: {e}")
