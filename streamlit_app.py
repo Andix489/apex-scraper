@@ -3,6 +3,7 @@ import sqlite3
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+import urllib.parse
 
 # Page Configuration
 st.set_page_config(
@@ -61,7 +62,7 @@ menu = st.sidebar.selectbox("Navigation", ["🏠 Dashboard", "🔍 Live Scraper"
 # 🏠 Dashboard View
 if menu == "🏠 Dashboard":
     st.subheader("Universal Scraper Control Center")
-    st.markdown("Welcome back! Use the sidebar to execute real-time scraping tasks.")
+    st.markdown("Welcome back! Use the live scraper to pull product catalogs from platforms like Jumia and Alibaba.")
     
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -81,38 +82,82 @@ if menu == "🏠 Dashboard":
 
 # 🔍 Live Scraper View
 elif menu == "🔍 Live Scraper":
-    st.subheader("🔍 Automated Live Scraper")
-    st.markdown("Pull live catalog listings instantly into your database.")
+    st.subheader("🔍 Multi-Platform Live Scraper")
+    st.markdown("Select your target marketplace and search for any product in real-time.")
 
-    search_term = st.text_input("Label this scrape batch:", value="Catalog Batch 1", placeholder="e.g. Batch 1")
+    # Platform selector
+    platform = st.selectbox("Choose Marketplace", ["Jumia Kenya", "Alibaba"])
+    search_term = st.text_input("What product do you want to search for?", placeholder="e.g. thinkpad, smartwatch, shoes")
 
     if st.button("Start Live Scraping", type="primary"):
-        with st.spinner("Fetching catalog items..."):
-            try:
-                target_url = "https://books.toscrape.com/"
-                headers = {"User-Agent": "Mozilla/5.0"}
-                
-                response = requests.get(target_url, headers=headers, timeout=10)
-                
-                if response.status_code != 200:
-                    st.error(f"Failed to fetch page. Status code: {response.status_code}")
-                else:
-                    soup = BeautifulSoup(response.text, 'html.parser')
-                    books = soup.select("article.product_pod")
-                    
+        if not search_term:
+            st.warning("Please enter a search term first.")
+        else:
+            with st.spinner(f"Scraping products from {platform} for '{search_term}'..."):
+                try:
                     scraped_data = []
-                    for book in books:
-                        title = book.select_one("h3 a").get("title")
-                        price = book.select_one(".price_color").get_text(strip=True)
-                        
-                        scraped_data.append({
-                            "title": title,
-                            "price": price,
-                            "location": "Online Store",
-                            "url": target_url,
-                            "search_query": search_term
-                        })
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                        "Accept-Language": "en-US,en;q=0.9"
+                    }
 
+                    if platform == "Jumia Kenya":
+                        formatted_query = search_term.replace(" ", "+")
+                        target_url = f"https://www.jumia.co.ke/catalog/?q={formatted_query}"
+                        
+                        response = requests.get(target_url, headers=headers, timeout=15)
+                        if response.status_code == 200:
+                            soup = BeautifulSoup(response.text, 'html.parser')
+                            items = soup.select("article.prd")
+                            
+                            for item in items[:15]:
+                                title_elem = item.select_one(".name")
+                                price_elem = item.select_one(".prc")
+                                link_elem = item.select_one("a.core")
+                                
+                                title = title_elem.get_text(strip=True) if title_elem else "N/A"
+                                price = price_elem.get_text(strip=True) if price_elem else "N/A"
+                                path = link_elem.get("href") if link_elem else ""
+                                url = f"https://www.jumia.co.ke{path}" if path.startswith("/") else path
+                                
+                                if title != "N/A":
+                                    scraped_data.append({
+                                        "title": title,
+                                        "price": price,
+                                        "location": "Jumia Kenya",
+                                        "url": url,
+                                        "search_query": f"Jumia: {search_term}"
+                                    })
+
+                    elif platform == "Alibaba":
+                        formatted_query = urllib.parse.quote_plus(search_term)
+                        target_url = f"https://www.alibaba.com/trade/search?fsb=y&IndexArea=product_en&SearchText={formatted_query}"
+                        
+                        response = requests.get(target_url, headers=headers, timeout=15)
+                        if response.status_code == 200:
+                            soup = BeautifulSoup(response.text, 'html.parser')
+                            items = soup.select(".organic-gallery-offer-item") or soup.select(".list-no-v2-item")
+                            
+                            for item in items[:15]:
+                                title_elem = item.select_one(".elements-title-normal") or item.select_one("h2")
+                                price_elem = item.select_one(".elements-price-normal") or item.select_one(".price")
+                                link_elem = item.select_one("a")
+                                
+                                title = title_elem.get_text(strip=True) if title_elem else "N/A"
+                                price = price_elem.get_text(strip=True) if price_elem else "N/A"
+                                path = link_elem.get("href") if link_elem else ""
+                                url = f"https:{path}" if path.startswith("//") else path
+                                
+                                if title != "N/A":
+                                    scraped_data.append({
+                                        "title": title,
+                                        "price": price,
+                                        "location": "Alibaba Global",
+                                        "url": url,
+                                        "search_query": f"Alibaba: {search_term}"
+                                    })
+
+                    # Save to Database if items were found
                     if scraped_data:
                         conn = get_db_connection()
                         cursor = conn.cursor()
@@ -124,14 +169,14 @@ elif menu == "🔍 Live Scraper":
                         conn.commit()
                         conn.close()
 
-                        st.success(f"Successfully scraped and saved {len(scraped_data)} items!")
+                        st.success(f"Successfully scraped and saved {len(scraped_data)} items from {platform}!")
                         df = pd.DataFrame(scraped_data)
                         st.dataframe(df)
                     else:
-                        st.warning("No items found on the target page.")
+                        st.warning(f"No items found on {platform} for '{search_term}'. Try another keyword.")
 
-            except Exception as e:
-                st.error(f"An error occurred during scraping: {e}")
+                except Exception as e:
+                    st.error(f"An error occurred during scraping: {e}")
 
 # 📂 Saved Data View
 elif menu == "📂 Saved Data":
@@ -155,5 +200,5 @@ elif menu == "📂 Saved Data":
 # ⚙️ Preferences View
 elif menu == "⚙️ Preferences":
     st.subheader("⚙️ System Preferences")
-    st.text_input("Default Scraper Target", value="https://books.toscrape.com/")
+    st.text_input("Default Marketplace", value="Jumia Kenya")
     st.button("Save Preferences")
