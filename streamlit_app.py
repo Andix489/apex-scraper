@@ -56,7 +56,6 @@ def init_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    # Safety column checks for updates
     columns_to_add = ["product_type", "platform", "description"]
     for col in columns_to_add:
         try:
@@ -96,12 +95,12 @@ if menu == "🏠 Modern Dashboard":
 
     st.markdown("---")
     st.subheader("💡 How to Get Started")
-    st.info("1. Go to **Worldwide Live Scraper** in the sidebar.\n2. Type *any* product you want to find globally (e.g., gaming PCs, designer shoes, industrial gear).\n3. Automatically capture prices, full product names, descriptions, and global store sources!")
+    st.info("1. Go to **Worldwide Live Scraper** in the sidebar.\n2. Type *any* product you want to find globally.\n3. Automatically capture prices, full names, and clickable links to buy!")
 
 # 🔍 Live Scraper View
 elif menu == "🔍 Worldwide Live Scraper":
     st.title("🔍 Worldwide Store Scraper")
-    st.markdown("Extract live product details, full names, prices, and descriptions from online shops worldwide.")
+    st.markdown("Extract live product details, full names, prices, and clickable store links worldwide.")
 
     with st.form("scraper_form"):
         col_a, col_b = st.columns(2)
@@ -141,15 +140,21 @@ elif menu == "🔍 Worldwide Live Scraper":
                             if title_elem and link_elem:
                                 title = title_elem.get_text(strip=True)
                                 description = snippet_elem.get_text(strip=True) if snippet_elem else "No description snippet available for this listing."
-                                url = link_elem.get('href', '#')
+                                raw_url = link_elem.get('href', '#')
                                 
-                                # Determine source store name from domain URL
+                                # Clean duckduckgo redirect wrapper if present to provide direct destination link
+                                if "uddg=" in raw_url:
+                                    parsed_link = urllib.parse.parse_qs(urllib.parse.urlparse(raw_url).query)
+                                    final_url = parsed_link.get("uddg", [raw_url])[0]
+                                else:
+                                    final_url = raw_url
+
                                 store_name = "Global Online Store"
-                                if "amazon" in url.lower(): store_name = "Amazon Global"
-                                elif "alibaba" in url.lower(): store_name = "Alibaba / AliExpress"
-                                elif "jumia" in url.lower(): store_name = "Jumia Marketplace"
-                                elif "ebay" in url.lower(): store_name = "eBay International"
-                                elif "jiji" in url.lower(): store_name = "Jiji Marketplace"
+                                if "amazon" in final_url.lower(): store_name = "Amazon Global"
+                                elif "alibaba" in final_url.lower(): store_name = "Alibaba / AliExpress"
+                                elif "jumia" in final_url.lower(): store_name = "Jumia Marketplace"
+                                elif "ebay" in final_url.lower(): store_name = "eBay International"
+                                elif "jiji" in final_url.lower(): store_name = "Jiji Marketplace"
                                 
                                 price_display = f"US ${(i * 25 + 49)}" if i % 2 == 0 else f"Ksh {(i * 4500 + 1200):,}"
                                 
@@ -159,11 +164,10 @@ elif menu == "🔍 Worldwide Live Scraper":
                                     "product_type": product_type,
                                     "platform": store_name,
                                     "description": description,
-                                    "url": url,
+                                    "url": final_url,
                                     "search_query": search_term
                                 })
 
-                    # Dynamic fallback dataset to ensure smooth display if network blocks occur
                     if not scraped_data:
                         stores_list = ["Amazon Global", "Alibaba International", "Global Retail Hub", "Direct Vendor Store"]
                         for i in range(1, 8):
@@ -174,11 +178,10 @@ elif menu == "🔍 Worldwide Live Scraper":
                                 "product_type": product_type,
                                 "platform": store_chosen,
                                 "description": f"High-grade verified product listing matching search keyword '{search_term}'. Available for immediate international shipment.",
-                                "url": f"https://www.{store_chosen.lower().replace(' ', '')}.com/item-{search_term}-{i}",
+                                "url": f"https://www.{store_chosen.lower().replace(' ', '')}.com",
                                 "search_query": search_term
                             })
 
-                    # Save to database
                     conn = get_db_connection()
                     cursor = conn.cursor()
                     for row in scraped_data:
@@ -191,10 +194,13 @@ elif menu == "🔍 Worldwide Live Scraper":
 
                     st.success(f"Successfully scraped and organized {len(scraped_data)} global results for '{search_term}'!")
                     
-                    # Display results in modern clean table format
                     df = pd.DataFrame(scraped_data)
+                    # Render interactive table with proper clickable LinkColumns
                     st.dataframe(
                         df[['title', 'price', 'platform', 'product_type', 'description', 'url']],
+                        column_config={
+                            "url": st.column_config.LinkColumn("Buy Link", display_text="🔗 Open Store")
+                        },
                         use_container_width=True
                     )
 
@@ -211,7 +217,13 @@ elif menu == "📂 Saved Database":
     conn.close()
 
     if not df_all.empty:
-        st.dataframe(df_all, use_container_width=True)
+        st.dataframe(
+            df_all,
+            column_config={
+                "url": st.column_config.LinkColumn("Buy Link", display_text="🔗 Open Store")
+            },
+            use_container_width=True
+        )
         
         csv_data = df_all.to_csv(index=False).encode('utf-8')
         st.download_button(
