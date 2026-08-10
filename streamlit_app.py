@@ -60,7 +60,6 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
-    # Listings table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS listings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,7 +74,6 @@ def init_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    # Users table for secure login/signup
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
@@ -93,13 +91,15 @@ def init_db():
 
 init_db()
 
-# Session State Management for Login & Navigation
+# Session State Management
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
     st.session_state.username = ""
+if "nav_choice" not in st.session_state:
+    st.session_state.nav_choice = "🏠 Welcome & Landing Page"
 
-# --- AUTHENTICATION SCREEN (Sign Up / Log In) ---
+# --- AUTHENTICATION SCREEN ---
 if not st.session_state.logged_in:
     st.markdown("<br><br>", unsafe_allow_html=True)
     col_center1, col_center2, col_center3 = st.columns([1, 1.2, 1])
@@ -124,6 +124,7 @@ if not st.session_state.logged_in:
                         conn.commit()
                         st.session_state.logged_in = True
                         st.session_state.username = input_user
+                        st.session_state.nav_choice = "🔍 Worldwide Live Scraper"
                         st.success("Account created successfully! Entering dashboard...")
                         st.rerun()
                     except sqlite3.IntegrityError:
@@ -143,6 +144,7 @@ if not st.session_state.logged_in:
                     if user_record:
                         st.session_state.logged_in = True
                         st.session_state.username = input_user
+                        st.session_state.nav_choice = "🔍 Worldwide Live Scraper"
                         st.success("Login successful! Welcome back.")
                         st.rerun()
                     else:
@@ -153,15 +155,23 @@ if not st.session_state.logged_in:
 
 # --- MAIN APPLICATION (Unlocked after Login) ---
 else:
-    # Sidebar Navigation Hub
+    # Sidebar Navigation Hub synced with session state
     st.sidebar.title(f"⚡ Welcome, {st.session_state.username}")
     st.sidebar.markdown("---")
-    menu = st.sidebar.radio("Navigation Menu", ["🏠 Welcome & Landing Page", "🔍 Worldwide Live Scraper", "📂 Saved Database", "⚙️ System Settings"])
+    
+    menu_options = ["🏠 Welcome & Landing Page", "🔍 Worldwide Live Scraper", "📂 Saved Database", "⚙️ System Settings"]
+    
+    # Ensure current navigation choice index is safely handled
+    current_index = menu_options.index(st.session_state.nav_choice) if st.session_state.nav_choice in menu_options else 0
+    
+    menu = st.sidebar.radio("Navigation Menu", menu_options, index=current_index)
+    st.session_state.nav_choice = menu
     
     st.sidebar.markdown("---")
     if st.sidebar.button("🚪 Log Out"):
         st.session_state.logged_in = False
         st.session_state.username = ""
+        st.session_state.nav_choice = "🏠 Welcome & Landing Page"
         st.rerun()
 
     # 🏠 Landing Page / Hero Screen
@@ -174,8 +184,8 @@ else:
             st.markdown("<p style='color: #94a3b8; padding-top: 8px; font-weight: 600;'>Status: Active 🟢</p>", unsafe_allow_html=True)
         with col_nav3:
             if st.button("🚀 Launch Scraper Now"):
-                # Redirect user directly to scraper tab via script rerun simulation or instruction
-                st.info("Navigate to **Worldwide Live Scraper** using the sidebar menu to begin searching!")
+                st.session_state.nav_choice = "🔍 Worldwide Live Scraper"
+                st.rerun()
 
         st.markdown("---")
 
@@ -186,8 +196,8 @@ else:
             st.markdown('<div class="hero-subtitle">Instantly search products, rare car models, and global store inventories across multiple platforms simultaneously. Compare live prices, view product previews, and buy instantly.</div>', unsafe_allow_html=True)
             
             if st.button("🚀 GET STARTED NOW"):
-                st.balloons()
-                st.success("Ready! Select **Worldwide Live Scraper** from the sidebar menu.")
+                st.session_state.nav_choice = "🔍 Worldwide Live Scraper"
+                st.rerun()
 
         with col_hero_right:
             st.image("https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=700", caption="Apex Engine - Global Multi-Store Aggregator", use_container_width=True)
