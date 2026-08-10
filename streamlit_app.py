@@ -13,38 +13,58 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom High-End SaaS UI Styling with Beautiful Colors
+# Custom High-End SaaS UI Styling with Skyline Hero Background
 st.markdown("""
     <style>
     .main {
-        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-        color: #f8fafc;
+        background-color: #121212;
+        color: #ffffff;
+    }
+    .hero-container {
+        position: relative;
+        background-image: linear-gradient(rgba(0, 0, 0, 0.5), rgba(18, 18, 18, 0.95)), url('https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=1600');
+        background-size: cover;
+        background-position: center;
+        padding: 80px 40px;
+        border-radius: 16px;
+        margin-top: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
     }
     .hero-title {
-        font-size: 3.2rem;
-        font-weight: 800;
+        font-size: 3.8rem;
+        font-weight: 900;
         color: #ffffff;
-        line-height: 1.2;
+        line-height: 1.1;
         letter-spacing: -1px;
+        text-shadow: 0 4px 12px rgba(0,0,0,0.6);
     }
     .hero-subtitle {
-        font-size: 1.15rem;
-        color: #94a3b8;
-        margin-top: 15px;
-        margin-bottom: 30px;
+        font-size: 1.2rem;
+        color: #e2e8f0;
+        margin-top: 20px;
+        margin-bottom: 35px;
+        text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+        max-width: 600px;
     }
     .stButton>button {
-        border-radius: 10px;
+        border-radius: 8px;
         font-weight: bold;
-        background: linear-gradient(135deg, #6366f1, #a855f7);
+        background: linear-gradient(135deg, #f97316, #ea580c);
         color: white;
-        padding: 0.6rem 1.5rem;
+        padding: 0.7rem 1.8rem;
         border: none;
-        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
-        width: 100%;
+        box-shadow: 0 4px 15px rgba(249, 115, 22, 0.4);
+    }
+    .footer-tagline {
+        text-align: center;
+        color: #84cc16;
+        font-weight: 600;
+        font-size: 1.1rem;
+        letter-spacing: 1px;
+        margin-top: 40px;
     }
     .card-box {
-        background: rgba(30, 41, 59, 0.7);
+        background: rgba(30, 41, 59, 0.8);
         padding: 25px;
         border-radius: 16px;
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -160,8 +180,6 @@ else:
     st.sidebar.markdown("---")
     
     menu_options = ["🏠 Welcome & Landing Page", "🔍 Worldwide Live Scraper", "📂 Saved Database", "⚙️ System Settings"]
-    
-    # Ensure current navigation choice index is safely handled
     current_index = menu_options.index(st.session_state.nav_choice) if st.session_state.nav_choice in menu_options else 0
     
     menu = st.sidebar.radio("Navigation Menu", menu_options, index=current_index)
@@ -174,48 +192,52 @@ else:
         st.session_state.nav_choice = "🏠 Welcome & Landing Page"
         st.rerun()
 
-    # 🏠 Landing Page / Hero Screen
+    # 🏠 Landing Page / Hero Screen (Skyscraper Skyline Design)
     if menu == "🏠 Welcome & Landing Page":
         
-        col_nav1, col_nav2, col_nav3 = st.columns([2, 1, 1])
-        with col_nav1:
-            st.markdown("### ⚡ **APEX GLOBAL INTELLIGENCE**")
-        with col_nav2:
-            st.markdown("<p style='color: #94a3b8; padding-top: 8px; font-weight: 600;'>Status: Active 🟢</p>", unsafe_allow_html=True)
-        with col_nav3:
-            if st.button("🚀 Launch Scraper Now"):
+        # Top Header Navigation Bar inside the page
+        col_logo, col_h1, col_h2, col_h3, col_btn = st.columns([1.5, 0.8, 0.8, 0.8, 1])
+        with col_logo:
+            st.markdown("### 🏢 **Apex Global Bank**")
+        with col_h1:
+            if st.button("Home"):
+                st.session_state.nav_choice = "🏠 Welcome & Landing Page"
+                st.rerun()
+        with col_h2:
+            if st.button("Scraper"):
+                st.session_state.nav_choice = "🔍 Worldwide Live Scraper"
+                st.rerun()
+        with col_h3:
+            if st.button("Database"):
+                st.session_state.nav_choice = "📂 Saved Database"
+                st.rerun()
+        with col_btn:
+            if st.button("Launch App 🚀"):
                 st.session_state.nav_choice = "🔍 Worldwide Live Scraper"
                 st.rerun()
 
-        st.markdown("---")
+        st.markdown("<hr style='border: 0.5px solid rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
 
-        col_hero_left, col_hero_right = st.columns([1.2, 1])
+        # Skyline Hero Section
+        st.markdown("""
+            <div class="hero-container">
+                <div class="hero-title">WEALTH & WORKFLOWS MADE SIMPLE.</div>
+                <div class="hero-subtitle">Instantly search global store inventories, vehicle listings, and financial markets simultaneously. Compare live prices and execute secure workflows.</div>
+            </div>
+        """, unsafe_allow_html=True)
 
-        with col_hero_left:
-            st.markdown('<div class="hero-title">GLOBAL SOURCING & WORKFLOWS MADE SIMPLE.</div>', unsafe_allow_html=True)
-            st.markdown('<div class="hero-subtitle">Instantly search products, rare car models, and global store inventories across multiple platforms simultaneously. Compare live prices, view product previews, and buy instantly.</div>', unsafe_allow_html=True)
-            
-            if st.button("🚀 GET STARTED NOW"):
+        # Action Button below Hero
+        col_spacer1, col_action, col_spacer2 = st.columns([1, 1.2, 1])
+        with col_action:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("EXPLORE LIVE SCRAPER NOW", use_container_width=True):
                 st.session_state.nav_choice = "🔍 Worldwide Live Scraper"
                 st.rerun()
 
-        with col_hero_right:
-            st.image("https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=700", caption="Apex Engine - Global Multi-Store Aggregator", use_container_width=True)
+        # Footer Tagline matching reference style
+        st.markdown('<div class="footer-tagline">You\'re part of the family</div>', unsafe_allow_html=True)
 
-        st.markdown("---")
-        
-        fcol1, fcol2, fcol3 = st.columns(3)
-        with fcol1:
-            st.markdown("#### 🌍 Worldwide Reach")
-            st.write("Scan online shops, major markets, and international vendors instantly from one unified workspace.")
-        with fcol2:
-            st.markdown("#### 🖼️ Visual Previews")
-            st.write("Examine thumbnail images and verified descriptions before selecting where to buy.")
-        with fcol3:
-            st.markdown("#### 🔗 Direct Buy Links")
-            st.write("One-click integration takes you straight to the checkout page of the platform.")
-
-    # 🔍 Live Scraper View
+    # 🔍 Live Scraper View (Automatically opens here when launched!)
     elif menu == "🔍 Worldwide Live Scraper":
         st.title("🔍 Worldwide Store & Vehicle Scraper")
         st.markdown("Extract live options, preview images, prices, descriptions, and direct purchase links from multiple global platforms at once.")
