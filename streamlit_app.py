@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom High-End SaaS UI Styling (Inspired by modern minimalist layouts)
+# Custom High-End SaaS UI Styling
 st.markdown("""
     <style>
     .main {
@@ -40,14 +40,6 @@ st.markdown("""
         padding: 0.6rem 1.5rem;
         border: none;
         box-shadow: 0 4px 12px rgba(255, 75, 75, 0.3);
-    }
-    .metric-container {
-        background-color: #ffffff;
-        padding: 20px;
-        border-radius: 14px;
-        border: 1px solid #e3e8ee;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        text-align: center;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -89,10 +81,9 @@ st.sidebar.title("⚡ Apex Intelligence Hub")
 st.sidebar.markdown("---")
 menu = st.sidebar.radio("Navigation Menu", ["🏠 Welcome & Landing Page", "🔍 Worldwide Live Scraper", "📂 Saved Database", "⚙️ System Settings"])
 
-# 🏠 Landing Page / Hero Screen (Inspired by modern SaaS designs)
+# 🏠 Landing Page / Hero Screen
 if menu == "🏠 Welcome & Landing Page":
     
-    # Simulated Top Navbar Header
     col_nav1, col_nav2, col_nav3, col_nav4 = st.columns([2, 1, 1, 1])
     with col_nav1:
         st.markdown("### ⚡ **APEX GLOBAL**")
@@ -106,7 +97,6 @@ if menu == "🏠 Welcome & Landing Page":
 
     st.markdown("---")
 
-    # Hero Content Layout
     col_hero_left, col_hero_right = st.columns([1.2, 1])
 
     with col_hero_left:
@@ -117,12 +107,10 @@ if menu == "🏠 Welcome & Landing Page":
             st.info("Switch to **Worldwide Live Scraper** in the sidebar to begin searching!")
 
     with col_hero_right:
-        # High-end visual illustration container representing intelligent scraping
-        st.image("https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=700", caption="Apex Engine - Global Multi-Store Aggregator", use_column_width=True)
+        st.image("https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=700", caption="Apex Engine - Global Multi-Store Aggregator", use_container_width=True)
 
     st.markdown("---")
     
-    # Feature Callouts
     fcol1, fcol2, fcol3 = st.columns(3)
     with fcol1:
         st.markdown("#### 🌍 Worldwide Reach")
