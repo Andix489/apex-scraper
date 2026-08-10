@@ -6,12 +6,22 @@ from bs4 import BeautifulSoup
 import urllib.parse
 import textwrap
 
+def _flatten_html(markup: str) -> str:
+    """Strip leading whitespace from every line individually.
+    Markdown treats any line starting with 4+ spaces as a code block, which
+    makes Streamlit print raw CSS/HTML as visible text instead of rendering
+    it. textwrap.dedent only removes whitespace common to *every* line, which
+    isn't enough for nested CSS (different rules sit at different indent
+    levels) — so every line needs to be flattened individually instead."""
+    return "\n".join(line.lstrip() for line in markup.strip("\n").split("\n"))
+
 def html_block(markup: str):
-    """Render multi-line HTML/CSS safely.
-    Markdown treats 4+ leading spaces as a code block, which makes Streamlit
-    print raw CSS/HTML as text instead of rendering it. Dedenting first
-    avoids that."""
-    st.markdown(textwrap.dedent(markup), unsafe_allow_html=True)
+    """Render multi-line HTML/CSS in the main page body."""
+    st.markdown(_flatten_html(markup), unsafe_allow_html=True)
+
+def sidebar_html_block(markup: str):
+    """Render multi-line HTML/CSS in the sidebar."""
+    st.sidebar.markdown(_flatten_html(markup), unsafe_allow_html=True)
 
 # Page Configuration
 st.set_page_config(
@@ -426,10 +436,10 @@ if not st.session_state.logged_in:
 # --- MAIN APPLICATION (Unlocked after Login) ---
 else:
     # Sidebar Navigation Hub synced with session state
-    st.sidebar.markdown(textwrap.dedent(f"""
+    sidebar_html_block(f"""
         <div class="status-pill"><span class="dot"></span>Feeds Online</div>
         <h3 style='margin-top:14px;'>⚡ {st.session_state.username}</h3>
-    """), unsafe_allow_html=True)
+    """)
     st.sidebar.markdown("---")
 
     menu_options = ["🏠 Welcome & Landing Page", "🔍 Worldwide Live Scraper", "📂 Saved Database", "⚙️ System Settings"]
