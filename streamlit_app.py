@@ -4,6 +4,7 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import urllib.parse
+import re
 
 def html_block(markup: str):
     """Render raw HTML/CSS in the main page body.
@@ -16,6 +17,54 @@ def sidebar_html_block(markup: str):
     """Render raw HTML/CSS in the sidebar, same no-markdown-parsing guarantee."""
     with st.sidebar:
         st.html(markup)
+
+
+_PRICE_PATTERN = re.compile(r'(?:USD|US\$|\$|KES|Ksh|£|€|R\s)\s?[\d,]+(?:\.\d{1,2})?')
+
+def extract_price_from_text(text):
+    """Look for an obvious currency amount in plain text (e.g. a search
+    snippet). Returns None rather than a guess if nothing matches."""
+    if not text:
+        return None
+    match = _PRICE_PATTERN.search(text)
+    return match.group(0).strip() if match else None
+
+
+def fetch_real_product_details(url, timeout=6):
+    """Best-effort real photo + real price straight off the actual listing
+    page (via Open Graph / product meta tags). Many retailers block
+    scraping or simply don't expose this data — when that happens this
+    returns None for that field instead of inventing a number or picture."""
+    result = {"image": None, "price": None}
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        resp = requests.get(url, headers=headers, timeout=timeout)
+        if resp.status_code == 200:
+            page = BeautifulSoup(resp.text, "html.parser")
+
+            og_image = page.find("meta", property="og:image")
+            if og_image and og_image.get("content"):
+                result["image"] = og_image["content"]
+
+            price_meta = (
+                page.find("meta", property="product:price:amount")
+                or page.find("meta", property="og:price:amount")
+                or page.find("meta", attrs={"itemprop": "price"})
+            )
+            currency_meta = (
+                page.find("meta", property="product:price:currency")
+                or page.find("meta", property="og:price:currency")
+            )
+            if price_meta and price_meta.get("content"):
+                currency = currency_meta["content"] if currency_meta and currency_meta.get("content") else ""
+                result["price"] = f"{currency} {price_meta['content']}".strip()
+            else:
+                result["price"] = extract_price_from_text(page.get_text(" ", strip=True)[:5000])
+    except Exception:
+        pass
+    return result
 
 # Page Configuration
 st.set_page_config(
@@ -441,7 +490,7 @@ if "logged_in" not in st.session_state:
 if "username" not in st.session_state:
     st.session_state.username = ""
 if "nav_choice" not in st.session_state:
-    st.session_state.nav_choice = "🏠 Welcome & Landing Page"
+    st.session_state.nav_choice = "🏠 Home"
 
 # --- AUTHENTICATION SCREEN ---
 if not st.session_state.logged_in:
@@ -471,7 +520,7 @@ if not st.session_state.logged_in:
                         conn.commit()
                         st.session_state.logged_in = True
                         st.session_state.username = input_user
-                        st.session_state.nav_choice = "🏠 Welcome & Landing Page"
+                        st.session_state.nav_choice = "🏠 Home"
                         st.success("Account created successfully! Entering dashboard...")
                         st.rerun()
                     except sqlite3.IntegrityError:
@@ -491,7 +540,7 @@ if not st.session_state.logged_in:
                     if user_record:
                         st.session_state.logged_in = True
                         st.session_state.username = input_user
-                        st.session_state.nav_choice = "🏠 Welcome & Landing Page"
+                        st.session_state.nav_choice = "🏠 Home"
                         st.success("Login successful! Welcome back.")
                         st.rerun()
                     else:
@@ -509,7 +558,7 @@ else:
     """)
     st.sidebar.markdown("---")
 
-    menu_options = ["🏠 Welcome & Landing Page", "🔍 Worldwide Live Scraper", "📂 Saved Database", "⚙️ System Settings"]
+    menu_options = ["🏠 Home", "🔎 Search", "🗂️ Saved Listings", "⚙️ Preferences"]
     current_index = menu_options.index(st.session_state.nav_choice) if st.session_state.nav_choice in menu_options else 0
 
     menu = st.sidebar.radio("Navigation Menu", menu_options, index=current_index)
@@ -519,11 +568,11 @@ else:
     if st.sidebar.button("🚪 Log Out"):
         st.session_state.logged_in = False
         st.session_state.username = ""
-        st.session_state.nav_choice = "🏠 Welcome & Landing Page"
+        st.session_state.nav_choice = "🏠 Home"
         st.rerun()
 
     # 🏠 Landing Page / Hero Screen — the hub every user lands on after login
-    if menu == "🏠 Welcome & Landing Page":
+    if menu == "🏠 Home":
 
         render_ticker()
 
@@ -552,9 +601,9 @@ else:
         html_block('<div class="section-label">Quick Access</div>')
 
         features = [
-            ("🔍", "Live Scraper", "Search live inventory across dozens of global marketplaces and dealer networks at once.", "🔍 Worldwide Live Scraper", "Open Scraper"),
-            ("📂", "Saved Database", "Browse, filter and export every listing you've collected so far.", "📂 Saved Database", "View Database"),
-            ("⚙️", "Settings", "Set your default currency and export format for the whole app.", "⚙️ System Settings", "Open Settings"),
+            ("🔎", "Search", "Search live inventory across dozens of global marketplaces and dealer networks at once.", "🔎 Search", "Start Searching"),
+            ("🗂️", "Saved Listings", "Browse, filter and export every listing you've collected so far.", "🗂️ Saved Listings", "View Saved"),
+            ("⚙️", "Preferences", "Set your default currency and export format for the whole app.", "⚙️ Preferences", "Open Preferences"),
         ]
 
         card_cols = st.columns(3)
@@ -580,13 +629,13 @@ else:
 
         html_block('<div class="footer-tagline">You\'re part of the family</div>')
 
-    # 🔍 Live Scraper View
-    elif menu == "🔍 Worldwide Live Scraper":
+    # 🔎 Search View
+    elif menu == "🔎 Search":
 
         render_ticker()
         render_radar_header(
-            "<h1 style='margin:0;'>Worldwide Store &amp; Vehicle Scraper</h1>",
-            "Search for anything — a specific phone, a car model, a laptop — and we scan marketplaces and dealer networks across the globe for matches, with pictures, prices, and a direct link to buy.",
+            "<h1 style='margin:0;'>Search Worldwide</h1>",
+            "Search for anything — a specific phone, a car model, a laptop — and we scan marketplaces and dealer networks across the globe for real matches, with real photos, real prices where available, and a direct link to buy.",
             eyebrow="Query Manifest — 001"
         )
 
@@ -600,22 +649,42 @@ else:
         with col_btn:
             submit_btn = st.button("🚀 Search", use_container_width=True)
 
+        with st.expander("🎯 Refine your search (optional)"):
+            col_site, col_country = st.columns(2)
+            with col_site:
+                site_filter = st.text_input("Limit to a specific site", placeholder="e.g. ebay.com, jumia.co.ke")
+            with col_country:
+                country_filter = st.text_input("Limit to a country or region", placeholder="e.g. Kenya, Germany, UAE")
+
         if submit_btn:
             if not search_term:
                 st.warning("Please enter what you're looking for first.")
             else:
                 # Auto-detect a rough category from the search term itself —
-                # no dropdown needed, and the scraper always searches worldwide.
+                # no dropdown needed, and the search always covers the globe
+                # unless you've narrowed it with a site/country above.
                 term_lower = search_term.lower()
                 car_keywords = ["car", "bmw", "benz", "mercedes", "toyota", "honda",
                                  "ford", "audi", "vehicle", "suv", "truck", "motor", "vw", "lexus"]
                 is_car_search = any(k in term_lower for k in car_keywords)
                 product_type = "Automobiles & Vehicles" if is_car_search else "General Merchandise"
 
-                with st.spinner(f"Scanning global platforms for '{search_term}'..."):
+                spinner_msg = f"Scanning global platforms for '{search_term}'"
+                if site_filter:
+                    spinner_msg += f" on {site_filter}"
+                if country_filter:
+                    spinner_msg += f" in {country_filter}"
+
+                with st.spinner(spinner_msg + " — pulling real photos and prices from each listing, this can take a moment..."):
                     try:
                         scraped_data = []
-                        query = urllib.parse.quote_plus(f"{search_term} buy price online store catalog")
+
+                        query_parts = [search_term, "buy", "price"]
+                        if site_filter.strip():
+                            query_parts.append(f"site:{site_filter.strip()}")
+                        if country_filter.strip():
+                            query_parts.append(country_filter.strip())
+                        query = urllib.parse.quote_plus(" ".join(query_parts))
                         target_url = f"https://html.duckduckgo.com/html/?q={query}"
 
                         headers = {
@@ -624,109 +693,95 @@ else:
 
                         response = requests.get(target_url, headers=headers, timeout=15)
 
+                        known_platforms = {
+                            "amazon.": "Amazon", "ebay.": "eBay", "alibaba.": "Alibaba",
+                            "aliexpress.": "AliExpress", "jumia.": "Jumia", "autotrader.": "AutoTrader",
+                            "cars.com": "Cars.com", "carsales.": "Carsales", "mobile.de": "Mobile.de",
+                            "cargurus.": "CarGurus", "olx.": "OLX", "craigslist.": "Craigslist",
+                            "facebook.": "Facebook Marketplace", "walmart.": "Walmart", "newegg.": "Newegg",
+                        }
+
                         if response.status_code == 200:
                             soup = BeautifulSoup(response.text, 'html.parser')
-                            results = soup.select(".result")
+                            results = soup.select(".result")[:9]
 
-                            car_images = [
-                                "https://images.unsplash.com/photo-1555215695-3004980ad54e?w=400",
-                                "https://images.unsplash.com/photo-1617814076367-b759c7d7e738?w=400",
-                                "https://images.unsplash.com/photo-1580273916550-e323be2ae537?w=400",
-                                "https://images.unsplash.com/photo-1526726538690-5cbf956ae2fd?w=400"
-                            ]
-                            tech_images = [
-                                "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400",
-                                "https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=400",
-                                "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400"
-                            ]
-
-                            for i, res in enumerate(results[:10], start=1):
+                            for res in results:
                                 title_elem = res.select_one(".result__title")
                                 snippet_elem = res.select_one(".result__snippet")
                                 link_elem = res.select_one(".result__url")
 
-                                if title_elem and link_elem:
-                                    title = title_elem.get_text(strip=True)
-                                    description = snippet_elem.get_text(strip=True) if snippet_elem else "Listing available for review and direct purchase."
-                                    raw_url = link_elem.get('href', '#')
+                                if not (title_elem and link_elem):
+                                    continue
 
-                                    if "uddg=" in raw_url:
-                                        parsed_link = urllib.parse.parse_qs(urllib.parse.urlparse(raw_url).query)
-                                        final_url = parsed_link.get("uddg", [raw_url])[0]
-                                    else:
-                                        final_url = raw_url
+                                title = title_elem.get_text(strip=True)
+                                description = snippet_elem.get_text(strip=True) if snippet_elem else ""
+                                raw_url = link_elem.get('href', '#')
 
-                                    store_name = "Global Online Store"
-                                    if "amazon" in final_url.lower(): store_name = "Amazon Global"
-                                    elif "alibaba" in final_url.lower() or "aliexpress" in final_url.lower(): store_name = "Alibaba / AliExpress"
-                                    elif "jumia" in final_url.lower(): store_name = "Jumia Marketplace"
-                                    elif "ebay" in final_url.lower(): store_name = "eBay International"
-                                    elif is_car_search:
-                                        stores_list_car = ["BMW Official Center", "Carvana Global", "AutoTrader International", "Motors Hub"]
-                                        store_name = stores_list_car[i % len(stores_list_car)]
+                                if "uddg=" in raw_url:
+                                    parsed_link = urllib.parse.parse_qs(urllib.parse.urlparse(raw_url).query)
+                                    final_url = parsed_link.get("uddg", [raw_url])[0]
+                                else:
+                                    final_url = raw_url
 
-                                    if is_car_search:
-                                        price_display = f"US ${(i * 4500 + 32000):,} (est.)"
-                                        img_url = car_images[i % len(car_images)]
-                                    else:
-                                        price_display = (f"US ${(i * 35 + 50)} (est.)" if i % 2 == 0
-                                                          else f"Ksh {(i * 3500 + 1500):,} (est.)")
-                                        img_url = tech_images[i % len(tech_images)]
+                                domain = urllib.parse.urlparse(final_url).netloc.replace("www.", "")
+                                store_name = domain or "Online Store"
+                                for key, label in known_platforms.items():
+                                    if key in domain:
+                                        store_name = label
+                                        break
 
-                                    scraped_data.append({
-                                        "title": title,
-                                        "price": price_display,
-                                        "product_type": product_type,
-                                        "platform": store_name,
-                                        "description": description,
-                                        "image_url": img_url,
-                                        "url": final_url,
-                                        "search_query": search_term
-                                    })
+                                # Try to pull the real photo + real price straight off
+                                # the actual listing page. Many sites block this or
+                                # don't expose it — when that happens we're honest
+                                # about it instead of making something up.
+                                details = fetch_real_product_details(final_url)
+                                image_url = details["image"] or f"https://www.google.com/s2/favicons?sz=128&domain={domain}"
+                                price_display = details["price"] or extract_price_from_text(description) or "See listing for price"
 
-                        if not scraped_data:
-                            for i in range(1, 8):
                                 scraped_data.append({
-                                    "title": f"Estimated Option: {search_term.title()} Specification Tier {i}",
-                                    "price": "US $45,000 (est.)" if is_car_search else "US $120 (est.)",
+                                    "title": title,
+                                    "price": price_display,
                                     "product_type": product_type,
-                                    "platform": "Global Multi-Store Hub",
-                                    "description": f"Placeholder option matching '{search_term}'. No live match was found — verify availability before purchase.",
-                                    "image_url": "https://images.unsplash.com/photo-1555215695-3004980ad54e?w=400",
-                                    "url": "https://www.google.com",
+                                    "platform": store_name,
+                                    "description": description or "No description available — open the listing for details.",
+                                    "image_url": image_url,
+                                    "url": final_url,
                                     "search_query": search_term
                                 })
 
-                        conn = get_db_connection()
-                        cursor = conn.cursor()
-                        for row in scraped_data:
-                            cursor.execute('''
-                                INSERT INTO listings (title, price, product_type, platform, description, image_url, url, search_query)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                            ''', (row['title'], row['price'], row['product_type'], row['platform'], row['description'], row['image_url'], row['url'], row['search_query']))
-                        conn.commit()
-                        conn.close()
+                        if scraped_data:
+                            conn = get_db_connection()
+                            cursor = conn.cursor()
+                            for row in scraped_data:
+                                cursor.execute('''
+                                    INSERT INTO listings (title, price, product_type, platform, description, image_url, url, search_query)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                ''', (row['title'], row['price'], row['product_type'], row['platform'], row['description'], row['image_url'], row['url'], row['search_query']))
+                            conn.commit()
+                            conn.close()
 
-                        st.success(f"Found {len(scraped_data)} options for '{search_term}' across global platforms.")
-                        html_block('<div class="section-label">Results</div>')
+                            st.success(f"Found {len(scraped_data)} real matches for '{search_term}'.")
+                            html_block('<div class="section-label">Results</div>')
 
-                        result_cols = st.columns(3)
-                        for idx, row in enumerate(scraped_data):
-                            with result_cols[idx % 3]:
-                                with st.container(border=True):
-                                    st.image(row['image_url'], use_container_width=True)
-                                    html_block(f"""
-                                        <div class="result-platform">{row['platform']}</div>
-                                        <div class="result-title">{row['title'][:70]}</div>
-                                        <div class="result-price">{row['price']}</div>
-                                    """)
-                                    st.link_button("🔗 Buy Now", row['url'], use_container_width=True)
+                            result_cols = st.columns(3)
+                            for idx, row in enumerate(scraped_data):
+                                with result_cols[idx % 3]:
+                                    with st.container(border=True):
+                                        st.image(row['image_url'], use_container_width=True)
+                                        html_block(f"""
+                                            <div class="result-platform">{row['platform']}</div>
+                                            <div class="result-title">{row['title'][:70]}</div>
+                                            <div class="result-price">{row['price']}</div>
+                                        """)
+                                        st.link_button("🔗 View & Buy", row['url'], use_container_width=True)
+                        else:
+                            st.info("No direct matches found for that search. Try a different phrase, remove the site/country filter, or check the spelling.")
 
                     except Exception as e:
                         st.error(f"Execution error: {e}")
 
     # 📂 Saved Data View
-    elif menu == "📂 Saved Database":
+    elif menu == "🗂️ Saved Listings":
         render_radar_header(
             "<h1 style='margin:0;'>Saved Global Database Repository</h1>",
             "Review all accumulated multi-platform records, preview images, and download complete data spreadsheets.",
@@ -758,7 +813,7 @@ else:
             st.info("Your database is currently empty. Run a live scrape to populate entries.")
 
     # ⚙️ Settings View
-    elif menu == "⚙️ System Settings":
+    elif menu == "⚙️ Preferences":
         render_radar_header(
             "<h1 style='margin:0;'>System Configuration</h1>",
             "Manage global application preferences and export formatting.",
