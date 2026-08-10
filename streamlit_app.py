@@ -7,30 +7,46 @@ import urllib.parse
 
 # Page Configuration
 st.set_page_config(
-    page_title="Universal Scraper Pro - Worldwide",
-    page_icon="🌍",
+    page_title="Apex Global Scraper - Universal Intelligence",
+    page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Modern Custom UI Styling & Dashboard Design
+# Custom High-End SaaS UI Styling (Inspired by modern minimalist layouts)
 st.markdown("""
     <style>
     .main {
-        background-color: #0b0f19;
+        background-color: #faf9f6;
+    }
+    .hero-title {
+        font-size: 3.5rem;
+        font-weight: 800;
+        color: #1a1f36;
+        line-height: 1.2;
+        letter-spacing: -1px;
+    }
+    .hero-subtitle {
+        font-size: 1.2rem;
+        color: #4f566b;
+        margin-top: 15px;
+        margin-bottom: 30px;
     }
     .stButton>button {
-        border-radius: 8px;
+        border-radius: 10px;
         font-weight: bold;
-        background-color: #ff4b4b;
+        background: linear-gradient(135deg, #ff6b6b, #ff4b4b);
         color: white;
-        width: 100%;
+        padding: 0.6rem 1.5rem;
+        border: none;
+        box-shadow: 0 4px 12px rgba(255, 75, 75, 0.3);
     }
-    .metric-card {
-        background-color: #161b22;
+    .metric-container {
+        background-color: #ffffff;
         padding: 20px;
-        border-radius: 12px;
-        border: 1px solid #30363d;
+        border-radius: 14px;
+        border: 1px solid #e3e8ee;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         text-align: center;
     }
     </style>
@@ -69,34 +85,54 @@ def init_db():
 init_db()
 
 # Navigation Hub via Sidebar Radio
-st.sidebar.title("🌍 Apex Global Scraper")
+st.sidebar.title("⚡ Apex Intelligence Hub")
 st.sidebar.markdown("---")
-menu = st.sidebar.radio("Navigation Hub", ["🏠 Modern Dashboard", "🔍 Worldwide Live Scraper", "📂 Saved Database", "⚙️ System Settings"])
+menu = st.sidebar.radio("Navigation Menu", ["🏠 Welcome & Landing Page", "🔍 Worldwide Live Scraper", "📂 Saved Database", "⚙️ System Settings"])
 
-# 🏠 Dashboard View
-if menu == "🏠 Modern Dashboard":
-    st.title("🌍 Universal Scraper Command Center")
-    st.markdown("Welcome to your global product extraction intelligence system. Search cars, electronics, and items worldwide with images and direct store links.")
+# 🏠 Landing Page / Hero Screen (Inspired by modern SaaS designs)
+if menu == "🏠 Welcome & Landing Page":
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM listings")
-    total_listings = cursor.fetchone()[0]
-    cursor.execute("SELECT COUNT(DISTINCT search_query) FROM listings")
-    total_queries = cursor.fetchone()[0]
-    conn.close()
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric(label="Total Global Items Logged", value=total_listings)
-    with col2:
-        st.metric(label="Unique Global Queries", value=total_queries)
-    with col3:
-        st.metric(label="Global Scraper Engine", value="Online & Worldwide 🟢")
+    # Simulated Top Navbar Header
+    col_nav1, col_nav2, col_nav3, col_nav4 = st.columns([2, 1, 1, 1])
+    with col_nav1:
+        st.markdown("### ⚡ **APEX GLOBAL**")
+    with col_nav2:
+        st.markdown("<p style='color: #4f566b; padding-top: 8px; font-weight: 600;'>Features</p>", unsafe_allow_html=True)
+    with col_nav3:
+        st.markdown("<p style='color: #4f566b; padding-top: 8px; font-weight: 600;'>Pricing</p>", unsafe_allow_html=True)
+    with col_nav4:
+        if st.button("Launch App"):
+            st.rerun()
 
     st.markdown("---")
-    st.subheader("💡 How to Get Started")
-    st.info("1. Go to **Worldwide Live Scraper** in the sidebar.\n2. Type any item or specific car model (e.g., *BMW M4*, *iPhone 15*, *Sony Camera*).\n3. View product pictures, descriptions, platform sources, prices, and click to buy instantly!")
+
+    # Hero Content Layout
+    col_hero_left, col_hero_right = st.columns([1.2, 1])
+
+    with col_hero_left:
+        st.markdown('<div class="hero-title">GLOBAL SOURCING & WORKFLOWS MADE SIMPLE.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="hero-subtitle">Instantly search products, rare car models, and global store inventories across multiple platforms simultaneously. Compare live prices, view product previews, and buy instantly.</div>', unsafe_allow_html=True)
+        
+        if st.button("🚀 GET STARTED NOW"):
+            st.info("Switch to **Worldwide Live Scraper** in the sidebar to begin searching!")
+
+    with col_hero_right:
+        # High-end visual illustration container representing intelligent scraping
+        st.image("https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=700", caption="Apex Engine - Global Multi-Store Aggregator", use_column_width=True)
+
+    st.markdown("---")
+    
+    # Feature Callouts
+    fcol1, fcol2, fcol3 = st.columns(3)
+    with fcol1:
+        st.markdown("#### 🌍 Worldwide Reach")
+        st.write("Scan online shops, major markets, and international vendors instantly from one unified workspace.")
+    with fcol2:
+        st.markdown("#### 🖼️ Visual Previews")
+        st.write("Examine thumbnail images and verified descriptions before selecting where to buy.")
+    with fcol3:
+        st.markdown("#### 🔗 Direct Buy Links")
+        st.write("One-click integration takes you straight to the checkout page of the platform.")
 
 # 🔍 Live Scraper View
 elif menu == "🔍 Worldwide Live Scraper":
@@ -133,7 +169,6 @@ elif menu == "🔍 Worldwide Live Scraper":
                         soup = BeautifulSoup(response.text, 'html.parser')
                         results = soup.select(".result")
                         
-                        # Sample thumbnail image bank for robust visual previews matching categories
                         car_images = [
                             "https://images.unsplash.com/photo-1555215695-3004980ad54e?w=400",
                             "https://images.unsplash.com/photo-1617814076367-b759c7d7e738?w=400",
@@ -171,7 +206,6 @@ elif menu == "🔍 Worldwide Live Scraper":
                                     stores_list_car = ["BMW Official Center", "Carvana Global", "AutoTrader International", "Motors Hub"]
                                     store_name = stores_list_car[i % len(stores_list_car)]
 
-                                # Assign appropriate realistic pricing and preview images based on item query
                                 if "car" in search_term.lower() or "bmw" in search_term.lower():
                                     price_display = f"US ${(i * 4500 + 32000):,}"
                                     img_url = car_images[i % len(car_images)]
@@ -203,7 +237,6 @@ elif menu == "🔍 Worldwide Live Scraper":
                                 "search_query": search_term
                             })
 
-                    # Save to database
                     conn = get_db_connection()
                     cursor = conn.cursor()
                     for row in scraped_data:
@@ -217,7 +250,6 @@ elif menu == "🔍 Worldwide Live Scraper":
                     st.success(f"Successfully scraped and organized {len(scraped_data)} options for '{search_term}' with pictures and store links!")
                     
                     df = pd.DataFrame(scraped_data)
-                    # Display results with images and clickable purchase links
                     st.dataframe(
                         df[['image_url', 'title', 'price', 'platform', 'product_type', 'description', 'url']],
                         column_config={
