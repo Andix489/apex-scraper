@@ -328,6 +328,44 @@ html_block("""
         font-size: 13px; color: var(--text-dim) !important;
         line-height: 1.55; margin-bottom: 2px; min-height: 58px;
     }
+
+    /* Search bar + result cards on the scraper page */
+    .stTextInput input{ padding: 14px 16px !important; font-size: 15px !important; }
+    [data-testid="stImage"] img{ border-radius: 10px !important; }
+    .result-platform{
+        font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+        letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--mint); margin-top: 12px; margin-bottom: 4px;
+    }
+    .result-title{
+        font-family: 'Space Grotesk', sans-serif !important;
+        font-weight: 600 !important; font-size: 15px;
+        line-height: 1.35; margin-bottom: 8px; min-height: 40px;
+    }
+    .result-price{
+        font-family: 'Space Grotesk', sans-serif; font-weight: 700;
+        font-size: 17px; color: var(--amber); margin-bottom: 10px;
+    }
+
+    /* Buy Now link buttons -> same amber treatment as regular buttons */
+    .stLinkButton > a, [data-testid="stLinkButton"] a{
+        border-radius: 8px !important;
+        font-family: 'Space Grotesk', sans-serif !important;
+        font-weight: 600 !important;
+        background: var(--amber) !important;
+        color: #1a0e06 !important;
+        border: none !important;
+        text-decoration: none !important;
+        display: flex !important;
+        align-items: center; justify-content: center;
+        padding: 0.6rem 1rem !important;
+        transition: background .12s ease, box-shadow .12s ease, transform .12s ease;
+    }
+    .stLinkButton > a:hover, [data-testid="stLinkButton"] a:hover{
+        background: #ff8a53 !important;
+        box-shadow: 0 6px 20px rgba(255,122,61,0.28) !important;
+        transform: translateY(-1px);
+    }
     </style>
 """)
 
@@ -548,25 +586,33 @@ else:
         render_ticker()
         render_radar_header(
             "<h1 style='margin:0;'>Worldwide Store &amp; Vehicle Scraper</h1>",
-            "Pull live listings, pricing, images and direct purchase links from marketplaces and dealer networks around the globe — one query, every platform, simultaneously.",
+            "Search for anything — a specific phone, a car model, a laptop — and we scan marketplaces and dealer networks across the globe for matches, with pictures, prices, and a direct link to buy.",
             eyebrow="Query Manifest — 001"
         )
 
-        with st.form("scraper_form"):
-            col_a, col_b = st.columns(2)
-            with col_a:
-                product_type = st.selectbox("01 · Product Category", ["Automobiles & Vehicles", "Electronics & Computing", "Fashion & Apparel", "Home & Living", "General Merchandise"])
-            with col_b:
-                target_region = st.selectbox("02 · Global Scope", ["Worldwide (All Stores)", "North America / Global Online", "African Markets", "Asian & International Marketplaces"])
-
-            search_term = st.text_input("03 · Product Name or Car Model", placeholder="e.g. BMW M4, iPhone 15 Pro, Gaming Laptop")
-            submit_btn = st.form_submit_button("🚀 Run Multi-Platform Scraper")
+        col_search, col_btn = st.columns([5, 1.3])
+        with col_search:
+            search_term = st.text_input(
+                "Search",
+                placeholder="e.g. iPhone 15 Pro, BMW M4, gaming laptop, leather sofa...",
+                label_visibility="collapsed"
+            )
+        with col_btn:
+            submit_btn = st.button("🚀 Search", use_container_width=True)
 
         if submit_btn:
             if not search_term:
-                st.warning("Please enter a product keyword or car model first.")
+                st.warning("Please enter what you're looking for first.")
             else:
-                with st.spinner(f"Aggregating live options with images for '{search_term}' across global platforms..."):
+                # Auto-detect a rough category from the search term itself —
+                # no dropdown needed, and the scraper always searches worldwide.
+                term_lower = search_term.lower()
+                car_keywords = ["car", "bmw", "benz", "mercedes", "toyota", "honda",
+                                 "ford", "audi", "vehicle", "suv", "truck", "motor", "vw", "lexus"]
+                is_car_search = any(k in term_lower for k in car_keywords)
+                product_type = "Automobiles & Vehicles" if is_car_search else "General Merchandise"
+
+                with st.spinner(f"Scanning global platforms for '{search_term}'..."):
                     try:
                         scraped_data = []
                         query = urllib.parse.quote_plus(f"{search_term} buy price online store catalog")
@@ -615,11 +661,11 @@ else:
                                     elif "alibaba" in final_url.lower() or "aliexpress" in final_url.lower(): store_name = "Alibaba / AliExpress"
                                     elif "jumia" in final_url.lower(): store_name = "Jumia Marketplace"
                                     elif "ebay" in final_url.lower(): store_name = "eBay International"
-                                    elif "car" in search_term.lower() or "bmw" in search_term.lower():
+                                    elif is_car_search:
                                         stores_list_car = ["BMW Official Center", "Carvana Global", "AutoTrader International", "Motors Hub"]
                                         store_name = stores_list_car[i % len(stores_list_car)]
 
-                                    if "car" in search_term.lower() or "bmw" in search_term.lower():
+                                    if is_car_search:
                                         price_display = f"US ${(i * 4500 + 32000):,} (est.)"
                                         img_url = car_images[i % len(car_images)]
                                     else:
@@ -642,7 +688,7 @@ else:
                             for i in range(1, 8):
                                 scraped_data.append({
                                     "title": f"Estimated Option: {search_term.title()} Specification Tier {i}",
-                                    "price": "US $45,000 (est.)" if "car" in search_term.lower() else "US $120 (est.)",
+                                    "price": "US $45,000 (est.)" if is_car_search else "US $120 (est.)",
                                     "product_type": product_type,
                                     "platform": "Global Multi-Store Hub",
                                     "description": f"Placeholder option matching '{search_term}'. No live match was found — verify availability before purchase.",
@@ -661,17 +707,20 @@ else:
                         conn.commit()
                         conn.close()
 
-                        st.success(f"Found {len(scraped_data)} options for '{search_term}' with pictures and store links.")
+                        st.success(f"Found {len(scraped_data)} options for '{search_term}' across global platforms.")
+                        html_block('<div class="section-label">Results</div>')
 
-                        df = pd.DataFrame(scraped_data)
-                        st.dataframe(
-                            df[['image_url', 'title', 'price', 'platform', 'product_type', 'description', 'url']],
-                            column_config={
-                                "image_url": st.column_config.ImageColumn("Preview", width="small"),
-                                "url": st.column_config.LinkColumn("Buy Link", display_text="🔗 Buy Now")
-                            },
-                            use_container_width=True
-                        )
+                        result_cols = st.columns(3)
+                        for idx, row in enumerate(scraped_data):
+                            with result_cols[idx % 3]:
+                                with st.container(border=True):
+                                    st.image(row['image_url'], use_container_width=True)
+                                    html_block(f"""
+                                        <div class="result-platform">{row['platform']}</div>
+                                        <div class="result-title">{row['title'][:70]}</div>
+                                        <div class="result-price">{row['price']}</div>
+                                    """)
+                                    st.link_button("🔗 Buy Now", row['url'], use_container_width=True)
 
                     except Exception as e:
                         st.error(f"Execution error: {e}")
