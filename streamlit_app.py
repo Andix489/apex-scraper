@@ -4,24 +4,18 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import urllib.parse
-import textwrap
-
-def _flatten_html(markup: str) -> str:
-    """Strip leading whitespace from every line individually.
-    Markdown treats any line starting with 4+ spaces as a code block, which
-    makes Streamlit print raw CSS/HTML as visible text instead of rendering
-    it. textwrap.dedent only removes whitespace common to *every* line, which
-    isn't enough for nested CSS (different rules sit at different indent
-    levels) — so every line needs to be flattened individually instead."""
-    return "\n".join(line.lstrip() for line in markup.strip("\n").split("\n"))
 
 def html_block(markup: str):
-    """Render multi-line HTML/CSS in the main page body."""
-    st.markdown(_flatten_html(markup), unsafe_allow_html=True)
+    """Render raw HTML/CSS in the main page body.
+    st.html() (Streamlit >= 1.31) injects markup directly with no Markdown
+    parsing step at all, so indentation can never get misread as a code
+    block the way it can with st.markdown(..., unsafe_allow_html=True)."""
+    st.html(markup)
 
 def sidebar_html_block(markup: str):
-    """Render multi-line HTML/CSS in the sidebar."""
-    st.sidebar.markdown(_flatten_html(markup), unsafe_allow_html=True)
+    """Render raw HTML/CSS in the sidebar, same no-markdown-parsing guarantee."""
+    with st.sidebar:
+        st.html(markup)
 
 # Page Configuration
 st.set_page_config(
