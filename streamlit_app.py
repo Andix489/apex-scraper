@@ -151,7 +151,7 @@ elif menu == "🔍 Worldwide Live Scraper":
                                 elif "ebay" in url.lower(): store_name = "eBay International"
                                 elif "jiji" in url.lower(): store_name = "Jiji Marketplace"
                                 
-                                price_display = f"US ${(i * 25 + 49).}") if i % 2 == 0 else f"Ksh {(i * 4500 + 1200):,}"
+                                price_display = f"US ${(i * 25 + 49)}" if i % 2 == 0 else f"Ksh {(i * 4500 + 1200):,}"
                                 
                                 scraped_data.append({
                                     "title": title,
