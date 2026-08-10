@@ -293,6 +293,41 @@ html_block("""
     [data-testid="stDataFrame"]{ border: 1px solid var(--line) !important; border-radius: 10px !important; }
 
     hr{ border-color: var(--line-soft) !important; }
+
+    /* Section label (e.g. "Quick Access") */
+    .section-label{
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11.5px; letter-spacing: 0.12em; text-transform: uppercase;
+        color: var(--text-dim); margin: 34px 0 14px;
+    }
+
+    /* Feature cards on the welcome hub */
+    [data-testid="stVerticalBlockBorderWrapper"]{
+        background: var(--panel) !important;
+        border: 1px solid var(--line) !important;
+        border-radius: 14px !important;
+        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+    }
+    [data-testid="stVerticalBlockBorderWrapper"]:hover{
+        transform: translateY(-3px);
+        border-color: var(--amber-dim) !important;
+        box-shadow: 0 12px 28px rgba(255,122,61,0.14);
+    }
+    .feature-icon{
+        width: 46px; height: 46px; border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--panel-2); border: 1px solid var(--line);
+        font-size: 21px; margin-bottom: 14px;
+    }
+    .feature-title{
+        font-family: 'Space Grotesk', sans-serif !important;
+        font-weight: 600 !important; font-size: 17px;
+        margin-bottom: 6px;
+    }
+    .feature-desc{
+        font-size: 13px; color: var(--text-dim) !important;
+        line-height: 1.55; margin-bottom: 2px; min-height: 58px;
+    }
     </style>
 """)
 
@@ -398,7 +433,7 @@ if not st.session_state.logged_in:
                         conn.commit()
                         st.session_state.logged_in = True
                         st.session_state.username = input_user
-                        st.session_state.nav_choice = "🔍 Worldwide Live Scraper"
+                        st.session_state.nav_choice = "🏠 Welcome & Landing Page"
                         st.success("Account created successfully! Entering dashboard...")
                         st.rerun()
                     except sqlite3.IntegrityError:
@@ -418,7 +453,7 @@ if not st.session_state.logged_in:
                     if user_record:
                         st.session_state.logged_in = True
                         st.session_state.username = input_user
-                        st.session_state.nav_choice = "🔍 Worldwide Live Scraper"
+                        st.session_state.nav_choice = "🏠 Welcome & Landing Page"
                         st.success("Login successful! Welcome back.")
                         st.rerun()
                     else:
@@ -449,33 +484,22 @@ else:
         st.session_state.nav_choice = "🏠 Welcome & Landing Page"
         st.rerun()
 
-    # 🏠 Landing Page / Hero Screen
+    # 🏠 Landing Page / Hero Screen — the hub every user lands on after login
     if menu == "🏠 Welcome & Landing Page":
 
         render_ticker()
 
-        # Top Header Navigation Bar inside the page
-        col_logo, col_h1, col_h2, col_h3, col_btn = st.columns([1.5, 0.8, 0.8, 0.8, 1])
+        # Top bar: logo + live status, nothing else — full navigation lives
+        # in the sidebar and in the feature cards below, so this stays clean.
+        col_logo, col_status = st.columns([2, 1])
         with col_logo:
             st.markdown("### ⚡ **Apex Global**")
-        with col_h1:
-            if st.button("Home"):
-                st.session_state.nav_choice = "🏠 Welcome & Landing Page"
-                st.rerun()
-        with col_h2:
-            if st.button("Scraper"):
-                st.session_state.nav_choice = "🔍 Worldwide Live Scraper"
-                st.rerun()
-        with col_h3:
-            if st.button("Database"):
-                st.session_state.nav_choice = "📂 Saved Database"
-                st.rerun()
-        with col_btn:
-            if st.button("Launch App 🚀"):
-                st.session_state.nav_choice = "🔍 Worldwide Live Scraper"
-                st.rerun()
-
-        st.markdown("<hr>", unsafe_allow_html=True)
+        with col_status:
+            html_block(f"""
+                <div style="text-align:right; margin-top:8px;">
+                    <span class="status-pill"><span class="dot"></span>Feeds Online</span>
+                </div>
+            """)
 
         # Radar Hero Section
         html_block("""
@@ -486,13 +510,27 @@ else:
             </div>
         """)
 
-        # Action Button below Hero
-        col_spacer1, col_action, col_spacer2 = st.columns([1, 1.2, 1])
-        with col_action:
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("EXPLORE LIVE SCRAPER NOW", use_container_width=True):
-                st.session_state.nav_choice = "🔍 Worldwide Live Scraper"
-                st.rerun()
+        # Quick Access — clickable feature cards, the real navigation hub
+        html_block('<div class="section-label">Quick Access</div>')
+
+        features = [
+            ("🔍", "Live Scraper", "Search live inventory across dozens of global marketplaces and dealer networks at once.", "🔍 Worldwide Live Scraper", "Open Scraper"),
+            ("📂", "Saved Database", "Browse, filter and export every listing you've collected so far.", "📂 Saved Database", "View Database"),
+            ("⚙️", "Settings", "Set your default currency and export format for the whole app.", "⚙️ System Settings", "Open Settings"),
+        ]
+
+        card_cols = st.columns(3)
+        for col, (icon, title, desc, target, btn_label) in zip(card_cols, features):
+            with col:
+                with st.container(border=True):
+                    html_block(f"""
+                        <div class="feature-icon">{icon}</div>
+                        <div class="feature-title">{title}</div>
+                        <div class="feature-desc">{desc}</div>
+                    """)
+                    if st.button(btn_label, key=f"card_{target}", use_container_width=True):
+                        st.session_state.nav_choice = target
+                        st.rerun()
 
         html_block("""
             <div class="strip">
@@ -502,7 +540,7 @@ else:
             </div>
         """)
 
-        st.markdown('<div class="footer-tagline">You\'re part of the family</div>', unsafe_allow_html=True)
+        html_block('<div class="footer-tagline">You\'re part of the family</div>')
 
     # 🔍 Live Scraper View
     elif menu == "🔍 Worldwide Live Scraper":
