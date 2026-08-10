@@ -4,6 +4,14 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import urllib.parse
+import textwrap
+
+def html_block(markup: str):
+    """Render multi-line HTML/CSS safely.
+    Markdown treats 4+ leading spaces as a code block, which makes Streamlit
+    print raw CSS/HTML as text instead of rendering it. Dedenting first
+    avoids that."""
+    st.markdown(textwrap.dedent(markup), unsafe_allow_html=True)
 
 # Page Configuration
 st.set_page_config(
@@ -18,7 +26,7 @@ st.set_page_config(
 # Palette: ink #090c11, panel #10151c, amber #ff7a3d, mint #3ddc97
 # Type: Space Grotesk (display), Inter (body), JetBrains Mono (data/labels)
 # ------------------------------------------------------------------
-st.markdown("""
+html_block("""
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -282,7 +290,7 @@ st.markdown("""
 
     hr{ border-color: var(--line-soft) !important; }
     </style>
-""", unsafe_allow_html=True)
+""")
 
 
 def render_ticker():
@@ -292,22 +300,22 @@ def render_ticker():
         "Craigslist", "Amazon", "Newegg", "Rakuten", "AliExpress", "Bring a Trailer"
     ]
     items = "".join(f'<span class="ticker-item"><span class="dot"></span>{p}</span>' for p in platforms)
-    st.markdown(f"""
+    html_block(f"""
         <div class="ticker-bar">
             <div class="ticker-track">{items}{items}</div>
         </div>
-    """, unsafe_allow_html=True)
+    """)
 
 
 def render_radar_header(title_html, subtitle=None, eyebrow=None):
     if eyebrow:
         st.markdown(f'<div class="eyebrow">{eyebrow}</div>', unsafe_allow_html=True)
-    st.markdown(f"""
+    html_block(f"""
         <div class="hero-row">
             <div class="radar"><div class="radar-sweep"></div><div class="radar-blip"></div></div>
             <div>{title_html}</div>
         </div>
-    """, unsafe_allow_html=True)
+    """)
     if subtitle:
         st.markdown(f'<p style="color:var(--text-dim); font-size:15px; max-width:560px; margin-top:6px;">{subtitle}</p>', unsafe_allow_html=True)
 
@@ -418,10 +426,10 @@ if not st.session_state.logged_in:
 # --- MAIN APPLICATION (Unlocked after Login) ---
 else:
     # Sidebar Navigation Hub synced with session state
-    st.sidebar.markdown(f"""
+    st.sidebar.markdown(textwrap.dedent(f"""
         <div class="status-pill"><span class="dot"></span>Feeds Online</div>
         <h3 style='margin-top:14px;'>⚡ {st.session_state.username}</h3>
-    """, unsafe_allow_html=True)
+    """), unsafe_allow_html=True)
     st.sidebar.markdown("---")
 
     menu_options = ["🏠 Welcome & Landing Page", "🔍 Worldwide Live Scraper", "📂 Saved Database", "⚙️ System Settings"]
@@ -466,13 +474,13 @@ else:
         st.markdown("<hr>", unsafe_allow_html=True)
 
         # Radar Hero Section
-        st.markdown("""
+        html_block("""
             <div class="hero-container">
                 <div class="eyebrow" style="margin-bottom:16px;">Universal Inventory Interface</div>
                 <div class="hero-title">WORLDWIDE STORE<br>&amp; VEHICLE INTELLIGENCE.</div>
                 <div class="hero-subtitle">Instantly scan global store inventories and vehicle listings across dozens of platforms at once. Compare live prices, preview images, and jump straight to the source.</div>
             </div>
-        """, unsafe_allow_html=True)
+        """)
 
         # Action Button below Hero
         col_spacer1, col_action, col_spacer2 = st.columns([1, 1.2, 1])
@@ -482,13 +490,13 @@ else:
                 st.session_state.nav_choice = "🔍 Worldwide Live Scraper"
                 st.rerun()
 
-        st.markdown("""
+        html_block("""
             <div class="strip">
                 <div><div class="num">47</div><div class="lbl">Connected Platforms</div></div>
                 <div><div class="num">19</div><div class="lbl">Regions Indexed</div></div>
                 <div><div class="num">&lt;4s</div><div class="lbl">Avg. Response Time</div></div>
             </div>
-        """, unsafe_allow_html=True)
+        """)
 
         st.markdown('<div class="footer-tagline">You\'re part of the family</div>', unsafe_allow_html=True)
 
