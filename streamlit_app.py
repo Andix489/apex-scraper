@@ -846,6 +846,9 @@ else:
 
                         response = requests.get(target_url, headers=headers, timeout=15)
 
+                        if response.status_code != 200:
+                            st.warning(f"Search request came back with status {response.status_code} instead of 200 — the search engine likely blocked or rate-limited this request.")
+
                         known_platforms = {
                             "amazon.": "Amazon", "ebay.": "eBay", "alibaba.": "Alibaba",
                             "aliexpress.": "AliExpress", "jumia.": "Jumia", "autotrader.": "AutoTrader",
@@ -857,6 +860,18 @@ else:
                         if response.status_code == 200:
                             soup = BeautifulSoup(response.text, 'html.parser')
                             results = soup.select(".result")[:9]
+
+                            # Diagnostic: if the search comes back empty, show
+                            # WHY instead of just failing silently — usually
+                            # this means DuckDuckGo is blocking this server's
+                            # IP (common on cloud hosts) or changed their HTML.
+                            if not results:
+                                with st.expander("🔧 Why no results? (debug info)"):
+                                    st.write(f"HTTP status from search: {response.status_code}")
+                                    st.write(f"Response length: {len(response.text)} characters")
+                                    looks_blocked = any(word in response.text.lower() for word in ["captcha", "unusual traffic", "blocked", "rate limit"])
+                                    st.write(f"Looks like a block/CAPTCHA page: {looks_blocked}")
+                                    st.code(response.text[:1500] or "(empty response)")
 
                             for res in results:
                                 title_elem = res.select_one(".result__title")
