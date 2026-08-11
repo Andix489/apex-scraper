@@ -120,6 +120,88 @@ def apply_affiliate_tag(url: str, domain: str) -> str:
             return f"{url}{separator}{param}={value}"
     return url
 
+
+# ------------------------------------------------------------------
+# SEARCH BACKEND
+# Scraping DuckDuckGo's HTML page directly (the original approach) gets
+# unreliable fast on cloud hosts like Streamlit Cloud — search engines
+# rate-limit/block datacenter IPs, which shows up as empty results or a
+# non-200 status for no obvious reason. Google's Custom Search JSON API
+# is a real, ToS-compliant search API with a free tier (100 queries/day)
+# and doesn't have this problem. Add GOOGLE_SEARCH_API_KEY and
+# GOOGLE_SEARCH_CX to your Streamlit secrets to use it — full setup:
+# 1. https://console.cloud.google.com/ -> create a project -> enable
+#    "Custom Search API" -> create credentials -> API key.
+# 2. https://programmablesearchengine.google.com/ -> create a search
+#    engine -> under "Sites to search" choose "Search the entire web" ->
+#    copy its Search engine ID (that's GOOGLE_SEARCH_CX).
+# Without those secrets, this falls back to the DuckDuckGo scrape, which
+# still works sometimes but can't be relied on.
+# ------------------------------------------------------------------
+def fetch_search_results(query: str, num: int = 9):
+    """Returns (results, warning_message). results is a list of dicts with
+    title/url/snippet. warning_message is None on success, or a short
+    string explaining what went wrong."""
+    api_key = get_secret("GOOGLE_SEARCH_API_KEY")
+    cx = get_secret("GOOGLE_SEARCH_CX")
+
+    if api_key and cx:
+        try:
+            resp = requests.get(
+                "https://www.googleapis.com/customsearch/v1",
+                params={"key": api_key, "cx": cx, "q": query, "num": min(num, 10)},
+                timeout=15
+            )
+            if resp.status_code == 200:
+                items = resp.json().get("items", [])
+                results = [
+                    {"title": it.get("title", ""), "url": it.get("link", ""), "snippet": it.get("snippet", "")}
+                    for it in items
+                ]
+                return results, None
+            else:
+                return [], f"Google Search API returned status {resp.status_code}: {resp.text[:200]}"
+        except Exception as e:
+            return [], f"Google Search API error: {e}"
+
+    # Fallback: scrape DuckDuckGo's HTML page. Works sometimes, but cloud
+    # server IPs get blocked/rate-limited unpredictably — configure the
+    # Google API above for reliable results.
+    try:
+        target_url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+        resp = requests.get(target_url, headers=headers, timeout=15)
+
+        if resp.status_code != 200:
+            return [], f"Search request came back with status {resp.status_code} instead of 200 — DuckDuckGo likely blocked or rate-limited this request. Configure GOOGLE_SEARCH_API_KEY / GOOGLE_SEARCH_CX in secrets for reliable search."
+
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        raw_results = soup.select(".result")[:num]
+        results = []
+        for res in raw_results:
+            title_elem = res.select_one(".result__title")
+            snippet_elem = res.select_one(".result__snippet")
+            link_elem = res.select_one(".result__url")
+            if not (title_elem and link_elem):
+                continue
+            raw_url = link_elem.get('href', '#')
+            if "uddg=" in raw_url:
+                parsed_link = urllib.parse.parse_qs(urllib.parse.urlparse(raw_url).query)
+                final_url = parsed_link.get("uddg", [raw_url])[0]
+            else:
+                final_url = raw_url
+            results.append({
+                "title": title_elem.get_text(strip=True),
+                "url": final_url,
+                "snippet": snippet_elem.get_text(strip=True) if snippet_elem else "",
+            })
+
+        if not results:
+            return [], "DuckDuckGo returned a page with no results, which usually means it silently blocked the request. Configure GOOGLE_SEARCH_API_KEY / GOOGLE_SEARCH_CX in secrets for reliable search."
+        return results, None
+    except Exception as e:
+        return [], f"Search error: {e}"
+
 # Page Configuration
 st.set_page_config(
     page_title="Apex Global Scraper - Universal Intelligence",
@@ -837,17 +919,7 @@ else:
                             query_parts.append(f"site:{site_filter.strip()}")
                         if country_filter.strip():
                             query_parts.append(country_filter.strip())
-                        query = urllib.parse.quote_plus(" ".join(query_parts))
-                        target_url = f"https://html.duckduckgo.com/html/?q={query}"
-
-                        headers = {
-                            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                        }
-
-                        response = requests.get(target_url, headers=headers, timeout=15)
-
-                        if response.status_code != 200:
-                            st.warning(f"Search request came back with status {response.status_code} instead of 200 — the search engine likely blocked or rate-limited this request.")
+                        query = " ".join(query_parts)
 
                         known_platforms = {
                             "amazon.": "Amazon", "ebay.": "eBay", "alibaba.": "Alibaba",
@@ -857,69 +929,44 @@ else:
                             "facebook.": "Facebook Marketplace", "walmart.": "Walmart", "newegg.": "Newegg",
                         }
 
-                        if response.status_code == 200:
-                            soup = BeautifulSoup(response.text, 'html.parser')
-                            results = soup.select(".result")[:9]
+                        search_results, search_warning = fetch_search_results(query, num=9)
+                        if search_warning:
+                            st.warning(search_warning)
 
-                            # Diagnostic: if the search comes back empty, show
-                            # WHY instead of just failing silently — usually
-                            # this means DuckDuckGo is blocking this server's
-                            # IP (common on cloud hosts) or changed their HTML.
-                            if not results:
-                                with st.expander("🔧 Why no results? (debug info)"):
-                                    st.write(f"HTTP status from search: {response.status_code}")
-                                    st.write(f"Response length: {len(response.text)} characters")
-                                    looks_blocked = any(word in response.text.lower() for word in ["captcha", "unusual traffic", "blocked", "rate limit"])
-                                    st.write(f"Looks like a block/CAPTCHA page: {looks_blocked}")
-                                    st.code(response.text[:1500] or "(empty response)")
+                        for res in search_results:
+                            title = res["title"]
+                            description = res["snippet"]
+                            final_url = res["url"]
 
-                            for res in results:
-                                title_elem = res.select_one(".result__title")
-                                snippet_elem = res.select_one(".result__snippet")
-                                link_elem = res.select_one(".result__url")
+                            domain = urllib.parse.urlparse(final_url).netloc.replace("www.", "")
+                            store_name = domain or "Online Store"
+                            for key, label in known_platforms.items():
+                                if key in domain:
+                                    store_name = label
+                                    break
 
-                                if not (title_elem and link_elem):
-                                    continue
+                            # Try to pull the real photo + real price straight off
+                            # the actual listing page. Many sites block this or
+                            # don't expose it — when that happens we're honest
+                            # about it instead of making something up.
+                            details = fetch_real_product_details(final_url)
+                            image_url = details["image"] or f"https://www.google.com/s2/favicons?sz=128&domain={domain}"
+                            price_display = details["price"] or extract_price_from_text(description) or "See listing for price"
 
-                                title = title_elem.get_text(strip=True)
-                                description = snippet_elem.get_text(strip=True) if snippet_elem else ""
-                                raw_url = link_elem.get('href', '#')
+                            # Route through your affiliate tag if one's configured
+                            # for this platform — otherwise the link is untouched.
+                            final_url = apply_affiliate_tag(final_url, domain)
 
-                                if "uddg=" in raw_url:
-                                    parsed_link = urllib.parse.parse_qs(urllib.parse.urlparse(raw_url).query)
-                                    final_url = parsed_link.get("uddg", [raw_url])[0]
-                                else:
-                                    final_url = raw_url
-
-                                domain = urllib.parse.urlparse(final_url).netloc.replace("www.", "")
-                                store_name = domain or "Online Store"
-                                for key, label in known_platforms.items():
-                                    if key in domain:
-                                        store_name = label
-                                        break
-
-                                # Try to pull the real photo + real price straight off
-                                # the actual listing page. Many sites block this or
-                                # don't expose it — when that happens we're honest
-                                # about it instead of making something up.
-                                details = fetch_real_product_details(final_url)
-                                image_url = details["image"] or f"https://www.google.com/s2/favicons?sz=128&domain={domain}"
-                                price_display = details["price"] or extract_price_from_text(description) or "See listing for price"
-
-                                # Route through your affiliate tag if one's configured
-                                # for this platform — otherwise the link is untouched.
-                                final_url = apply_affiliate_tag(final_url, domain)
-
-                                scraped_data.append({
-                                    "title": title,
-                                    "price": price_display,
-                                    "product_type": product_type,
-                                    "platform": store_name,
-                                    "description": description or "No description available — open the listing for details.",
-                                    "image_url": image_url,
-                                    "url": final_url,
-                                    "search_query": search_term
-                                })
+                            scraped_data.append({
+                                "title": title,
+                                "price": price_display,
+                                "product_type": product_type,
+                                "platform": store_name,
+                                "description": description or "No description available — open the listing for details.",
+                                "image_url": image_url,
+                                "url": final_url,
+                                "search_query": search_term
+                            })
 
                         if scraped_data:
                             with engine.begin() as conn:
