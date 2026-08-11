@@ -1,10 +1,16 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import urllib.parse
 import re
+import bcrypt
+from datetime import datetime, timedelta
+from sqlalchemy import create_engine, text
+try:
+    import stripe
+except ImportError:
+    stripe = None
 
 def html_block(markup: str):
     """Render raw HTML/CSS in the main page body.
@@ -65,6 +71,54 @@ def fetch_real_product_details(url, timeout=6):
     except Exception:
         pass
     return result
+
+
+# ------------------------------------------------------------------
+# PASSWORD SECURITY
+# Plain-text passwords are never stored — bcrypt hashes + salts every
+# password before it touches the database, and verification re-hashes
+# the attempt to compare rather than ever storing/comparing raw text.
+# ------------------------------------------------------------------
+def hash_secret(raw: str) -> str:
+    return bcrypt.hashpw(raw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+def verify_secret(raw: str, hashed: str) -> bool:
+    if not raw or not hashed:
+        return False
+    try:
+        return bcrypt.checkpw(raw.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def get_secret(key: str, default: str = "") -> str:
+    """Safe secrets lookup — returns the default instead of crashing when
+    no secrets.toml exists yet (e.g. on a fresh deploy with nothing configured)."""
+    try:
+        return st.secrets.get(key, default)
+    except Exception:
+        return default
+
+
+# ------------------------------------------------------------------
+# AFFILIATE LINK WIRING
+# Fill these in via Streamlit secrets once you're approved for each
+# program (Amazon Associates, eBay Partner Network, etc). Until you do,
+# links go straight to the source with no commission attached — nothing
+# breaks either way, this just activates automatically once configured.
+# ------------------------------------------------------------------
+AFFILIATE_TAGS = {
+    "amazon.": ("tag", get_secret("AMAZON_AFFILIATE_TAG")),
+    "ebay.": ("campid", get_secret("EBAY_CAMPAIGN_ID")),
+    "aliexpress.": ("aff_id", get_secret("ALIEXPRESS_AFFILIATE_ID")),
+}
+
+def apply_affiliate_tag(url: str, domain: str) -> str:
+    for key, (param, value) in AFFILIATE_TAGS.items():
+        if key in domain and value:
+            separator = "&" if "?" in url else "?"
+            return f"{url}{separator}{param}={value}"
+    return url
 
 # Page Configuration
 st.set_page_config(
@@ -446,43 +500,57 @@ def render_radar_header(title_html, subtitle=None, eyebrow=None):
         st.markdown(f'<p style="color:var(--text-dim); font-size:15px; max-width:560px; margin-top:6px;">{subtitle}</p>', unsafe_allow_html=True)
 
 
-# Database Setup for Users & Listings
-def get_db_connection():
-    return sqlite3.connect('scraper_data.db', check_same_thread=False)
+# ------------------------------------------------------------------
+# DATABASE
+# Defaults to a local SQLite file (zero setup — works immediately).
+# IMPORTANT: Streamlit Cloud's filesystem is not permanent — every
+# redeploy/restart can wipe local SQLite data, including user accounts.
+# Add a DATABASE_URL secret (e.g. a free Supabase or Neon Postgres
+# instance) to switch to real persistent storage with no code changes.
+# ------------------------------------------------------------------
+DB_URL = get_secret("DATABASE_URL", "sqlite:///scraper_data.db")
+engine = create_engine(DB_URL, pool_pre_ping=True)
+IS_SQLITE = engine.dialect.name == "sqlite"
+USING_TEMP_STORAGE = IS_SQLITE and not get_secret("DATABASE_URL")
 
 def init_db():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS listings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT,
-            price TEXT,
-            product_type TEXT,
-            platform TEXT,
-            description TEXT,
-            image_url TEXT,
-            url TEXT,
-            search_query TEXT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
-            password TEXT
-        )
-    ''')
-    columns_to_add = ["product_type", "platform", "description", "image_url"]
-    for col in columns_to_add:
-        try:
-            cursor.execute(f"ALTER TABLE listings ADD COLUMN {col} TEXT")
-        except sqlite3.OperationalError:
-            pass
-    conn.commit()
-    conn.close()
+    id_column = "id INTEGER PRIMARY KEY AUTOINCREMENT" if IS_SQLITE else "id SERIAL PRIMARY KEY"
+    bool_default = "0" if IS_SQLITE else "FALSE"
+    with engine.begin() as conn:
+        conn.execute(text(f'''
+            CREATE TABLE IF NOT EXISTS listings (
+                {id_column},
+                title TEXT,
+                price TEXT,
+                product_type TEXT,
+                platform TEXT,
+                description TEXT,
+                image_url TEXT,
+                url TEXT,
+                search_query TEXT,
+                featured BOOLEAN DEFAULT {bool_default},
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        '''))
+        conn.execute(text('''
+            CREATE TABLE IF NOT EXISTS users (
+                username TEXT PRIMARY KEY,
+                password_hash TEXT,
+                security_question TEXT,
+                security_answer_hash TEXT,
+                failed_attempts INTEGER DEFAULT 0,
+                locked_until TIMESTAMP NULL
+            )
+        '''))
 
 init_db()
+
+SECURITY_QUESTIONS = [
+    "What was the name of your first pet?",
+    "What city were you born in?",
+    "What was your childhood nickname?",
+    "What's the name of your favorite teacher?",
+]
 
 # Session State Management
 if "logged_in" not in st.session_state:
@@ -505,48 +573,133 @@ if not st.session_state.logged_in:
             eyebrow="Access Manifest"
         )
 
-        auth_mode = st.radio("Mode", ["Log In", "Sign Up"], horizontal=True, label_visibility="collapsed")
+        if USING_TEMP_STORAGE:
+            st.warning("Running on temporary storage — accounts may be reset on redeploy. Add a DATABASE_URL secret for permanent accounts.", icon="⚠️")
 
-        input_user = st.text_input("Username", placeholder="Enter your username")
-        input_pass = st.text_input("Password", type="password", placeholder="Enter your password")
+        auth_mode = st.radio("Mode", ["Log In", "Sign Up", "Forgot Password"], horizontal=True, label_visibility="collapsed")
 
+        # ---------------- SIGN UP ----------------
         if auth_mode == "Sign Up":
+            input_user = st.text_input("Username", placeholder="Enter your username")
+            input_pass = st.text_input("Password", type="password", placeholder="Choose a password")
+            input_question = st.selectbox("Security question (for password recovery)", SECURITY_QUESTIONS)
+            input_answer = st.text_input("Your answer", placeholder="Used only if you ever forget your password")
+
             if st.button("Create Account & Sign In"):
-                if input_user and input_pass:
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    try:
-                        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (input_user, input_pass))
-                        conn.commit()
-                        st.session_state.logged_in = True
-                        st.session_state.username = input_user
-                        st.session_state.nav_choice = "🏠 Home"
-                        st.success("Account created successfully! Entering dashboard...")
-                        st.rerun()
-                    except sqlite3.IntegrityError:
-                        st.error("Username already exists! Please log in instead.")
-                    conn.close()
+                if input_user and input_pass and input_answer:
+                    with engine.begin() as conn:
+                        existing = conn.execute(
+                            text("SELECT username FROM users WHERE username = :u"),
+                            {"u": input_user}
+                        ).fetchone()
+                        if existing:
+                            st.error("Username already exists! Please log in instead.")
+                        else:
+                            conn.execute(
+                                text('''INSERT INTO users
+                                        (username, password_hash, security_question, security_answer_hash, failed_attempts)
+                                        VALUES (:u, :p, :q, :a, 0)'''),
+                                {
+                                    "u": input_user,
+                                    "p": hash_secret(input_pass),
+                                    "q": input_question,
+                                    "a": hash_secret(input_answer.strip().lower()),
+                                }
+                            )
+                            st.session_state.logged_in = True
+                            st.session_state.username = input_user
+                            st.session_state.nav_choice = "🏠 Home"
+                            st.success("Account created successfully! Entering dashboard...")
+                            st.rerun()
                 else:
-                    st.warning("Please fill in both fields.")
-        else:
+                    st.warning("Please fill in every field, including the security answer.")
+
+        # ---------------- LOG IN ----------------
+        elif auth_mode == "Log In":
+            input_user = st.text_input("Username", placeholder="Enter your username")
+            input_pass = st.text_input("Password", type="password", placeholder="Enter your password")
+
             if st.button("Log In to Dashboard"):
                 if input_user and input_pass:
-                    conn = get_db_connection()
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT * FROM users WHERE username = ? AND password = ?", (input_user, input_pass))
-                    user_record = cursor.fetchone()
-                    conn.close()
+                    with engine.begin() as conn:
+                        user_record = conn.execute(
+                            text("SELECT * FROM users WHERE username = :u"),
+                            {"u": input_user}
+                        ).mappings().fetchone()
 
-                    if user_record:
-                        st.session_state.logged_in = True
-                        st.session_state.username = input_user
-                        st.session_state.nav_choice = "🏠 Home"
-                        st.success("Login successful! Welcome back.")
-                        st.rerun()
-                    else:
-                        st.error("Invalid username or password.")
+                        now = datetime.utcnow()
+                        locked_until = user_record["locked_until"] if user_record else None
+                        if isinstance(locked_until, str):
+                            try:
+                                locked_until = datetime.fromisoformat(locked_until)
+                            except ValueError:
+                                locked_until = None
+
+                        if user_record and locked_until and locked_until > now:
+                            minutes_left = max(1, int((locked_until - now).total_seconds() // 60) + 1)
+                            st.error(f"Too many failed attempts. Try again in about {minutes_left} minute(s).")
+                        elif user_record and verify_secret(input_pass, user_record["password_hash"]):
+                            conn.execute(
+                                text("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE username = :u"),
+                                {"u": input_user}
+                            )
+                            st.session_state.logged_in = True
+                            st.session_state.username = input_user
+                            st.session_state.nav_choice = "🏠 Home"
+                            st.success("Login successful! Welcome back.")
+                            st.rerun()
+                        else:
+                            if user_record:
+                                attempts = (user_record["failed_attempts"] or 0) + 1
+                                if attempts >= 5:
+                                    conn.execute(
+                                        text("UPDATE users SET failed_attempts = :a, locked_until = :l WHERE username = :u"),
+                                        {"a": attempts, "l": now + timedelta(minutes=15), "u": input_user}
+                                    )
+                                    st.error("Too many failed attempts. Account locked for 15 minutes.")
+                                else:
+                                    conn.execute(
+                                        text("UPDATE users SET failed_attempts = :a WHERE username = :u"),
+                                        {"a": attempts, "u": input_user}
+                                    )
+                                    st.error(f"Invalid username or password. {5 - attempts} attempt(s) left before a temporary lock.")
+                            else:
+                                st.error("Invalid username or password.")
                 else:
                     st.warning("Please enter your credentials.")
+
+        # ---------------- FORGOT PASSWORD ----------------
+        else:
+            recover_user = st.text_input("Username", placeholder="Enter your username", key="recover_user")
+
+            if recover_user:
+                with engine.begin() as conn:
+                    record = conn.execute(
+                        text("SELECT security_question, security_answer_hash FROM users WHERE username = :u"),
+                        {"u": recover_user}
+                    ).mappings().fetchone()
+
+                if not record:
+                    st.error("No account found with that username.")
+                else:
+                    st.markdown(f"**{record['security_question']}**")
+                    recover_answer = st.text_input("Your answer", key="recover_answer")
+                    new_pass = st.text_input("New password", type="password", key="recover_new_pass")
+
+                    if st.button("Reset Password"):
+                        if recover_answer and new_pass:
+                            if verify_secret(recover_answer.strip().lower(), record["security_answer_hash"]):
+                                with engine.begin() as conn:
+                                    conn.execute(
+                                        text("UPDATE users SET password_hash = :p, failed_attempts = 0, locked_until = NULL WHERE username = :u"),
+                                        {"p": hash_secret(new_pass), "u": recover_user}
+                                    )
+                                st.success("Password reset! You can now log in with your new password.")
+                            else:
+                                st.error("That answer doesn't match our records.")
+                        else:
+                            st.warning("Please answer the question and choose a new password.")
+
         st.markdown("</div>", unsafe_allow_html=True)
 
 # --- MAIN APPLICATION (Unlocked after Login) ---
@@ -738,6 +891,10 @@ else:
                                 image_url = details["image"] or f"https://www.google.com/s2/favicons?sz=128&domain={domain}"
                                 price_display = details["price"] or extract_price_from_text(description) or "See listing for price"
 
+                                # Route through your affiliate tag if one's configured
+                                # for this platform — otherwise the link is untouched.
+                                final_url = apply_affiliate_tag(final_url, domain)
+
                                 scraped_data.append({
                                     "title": title,
                                     "price": price_display,
@@ -750,15 +907,14 @@ else:
                                 })
 
                         if scraped_data:
-                            conn = get_db_connection()
-                            cursor = conn.cursor()
-                            for row in scraped_data:
-                                cursor.execute('''
-                                    INSERT INTO listings (title, price, product_type, platform, description, image_url, url, search_query)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                                ''', (row['title'], row['price'], row['product_type'], row['platform'], row['description'], row['image_url'], row['url'], row['search_query']))
-                            conn.commit()
-                            conn.close()
+                            with engine.begin() as conn:
+                                for row in scraped_data:
+                                    conn.execute(
+                                        text('''INSERT INTO listings
+                                                (title, price, product_type, platform, description, image_url, url, search_query)
+                                                VALUES (:title, :price, :product_type, :platform, :description, :image_url, :url, :search_query)'''),
+                                        row
+                                    )
 
                             st.success(f"Found {len(scraped_data)} real matches for '{search_term}'.")
                             html_block('<div class="section-label">Results</div>')
@@ -788,9 +944,10 @@ else:
             eyebrow="Archive"
         )
 
-        conn = get_db_connection()
-        df_all = pd.read_sql("SELECT image_url, title, price, platform, product_type, description, url, timestamp FROM listings ORDER BY timestamp DESC", conn)
-        conn.close()
+        df_all = pd.read_sql(
+            text("SELECT image_url, title, price, platform, product_type, description, url, timestamp FROM listings ORDER BY timestamp DESC"),
+            engine
+        )
 
         if not df_all.empty:
             st.dataframe(
@@ -812,14 +969,69 @@ else:
         else:
             st.info("Your database is currently empty. Run a live scrape to populate entries.")
 
-    # ⚙️ Settings View
+    # ⚙️ Preferences View
     elif menu == "⚙️ Preferences":
         render_radar_header(
             "<h1 style='margin:0;'>System Configuration</h1>",
-            "Manage global application preferences and export formatting.",
+            "Manage app preferences, your subscription, and legal information.",
             eyebrow="Settings"
         )
         st.text_input("Default Global Currency", value="USD ($) / KES (Ksh)")
         st.selectbox("Default Export File Type", ["CSV (.csv)", "Excel (.xlsx)"])
         if st.button("Save Configuration Settings"):
             st.success("Global preferences saved successfully!")
+
+        html_block('<div class="section-label">Upgrade</div>')
+        stripe_key = get_secret("STRIPE_SECRET_KEY")
+        stripe_price = get_secret("STRIPE_PRICE_ID")
+
+        with st.container(border=True):
+            html_block("""
+                <div class="feature-icon">💳</div>
+                <div class="feature-title">Apex Pro — $5/month</div>
+                <div class="feature-desc">Unlimited searches, saved price alerts, and CSV export with no daily limits.</div>
+            """)
+            if stripe and stripe_key and stripe_price:
+                if st.button("Upgrade to Pro", use_container_width=True):
+                    try:
+                        stripe.api_key = stripe_key
+                        checkout_session = stripe.checkout.Session.create(
+                            payment_method_types=["card"],
+                            line_items=[{"price": stripe_price, "quantity": 1}],
+                            mode="subscription",
+                            success_url=get_secret("APP_URL", "https://your-app-url.streamlit.app") + "?upgraded=true",
+                            cancel_url=get_secret("APP_URL", "https://your-app-url.streamlit.app"),
+                        )
+                        st.link_button("Complete Payment →", checkout_session.url, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Couldn't start checkout: {e}")
+            else:
+                st.info("Payments aren't configured yet. Add STRIPE_SECRET_KEY, STRIPE_PRICE_ID, and APP_URL to your Streamlit secrets to enable this.")
+
+        html_block('<div class="section-label">Legal</div>')
+        with st.expander("📜 Terms of Service (draft template)"):
+            st.markdown("""
+This is a starting template only — have it reviewed by a lawyer before accepting real payments or storing real user data.
+
+**Use of Service.** This app helps you search publicly available listings across third-party websites and surfaces links to those sites. We do not sell products directly and are not a party to any transaction between you and a third-party seller.
+
+**No Warranty on Listings.** Prices, availability, and images are pulled from third-party sites and may be inaccurate or outdated. Always verify details on the seller's site before purchasing.
+
+**Accounts.** You're responsible for keeping your login credentials confidential. Contact support if you suspect unauthorized access.
+
+**Subscription & Billing.** Paid plans are billed on a recurring basis via Stripe until cancelled. Refunds are handled on a case-by-case basis.
+
+**Limitation of Liability.** This service is provided "as is" without warranties of any kind.
+            """)
+        with st.expander("🔒 Privacy Policy (draft template)"):
+            st.markdown("""
+This is a starting template only — have it reviewed by a lawyer before accepting real payments or storing real user data.
+
+**What we store.** Your username, a securely hashed password (never stored in plain text), your chosen security question, and the listings you search for.
+
+**What we don't store.** We don't store your payment card details — those are handled entirely by Stripe.
+
+**Third parties.** Search results link out to third-party marketplaces; their own privacy policies apply once you leave this app.
+
+**Your rights.** You can request deletion of your account and associated data at any time by contacting support.
+            """)
