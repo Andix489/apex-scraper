@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- DATABASE SETUP & MIGRATION ---
+# --- DATABASE SETUP & SAFE MIGRATION ---
 def init_db():
     conn = sqlite3.connect("scraper_data.db", check_same_thread=False)
     cursor = conn.cursor()
@@ -28,7 +28,7 @@ def init_db():
         )
     """)
     
-    # Listings table (Upgraded with folders, tags, currency, and notes)
+    # Listings table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS listings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,6 +46,25 @@ def init_db():
         )
     """)
     
+    # Safely add columns if an older table version exists without them
+    cursor.execute("PRAGMA table_info(listings)")
+    existing_columns = [col[1] for col in cursor.fetchall()]
+    
+    if "username" not in existing_columns:
+        cursor.execute("ALTER TABLE listings ADD COLUMN username TEXT DEFAULT 'default_user'")
+    if "folder" not in existing_columns:
+        cursor.execute("ALTER TABLE listings ADD COLUMN folder TEXT DEFAULT 'General'")
+    if "tags" not in existing_columns:
+        cursor.execute("ALTER TABLE listings ADD COLUMN tags TEXT DEFAULT ''")
+    if "notes" not in existing_columns:
+        cursor.execute("ALTER TABLE listings ADD COLUMN notes TEXT DEFAULT ''")
+    if "raw_price" not in existing_columns:
+        cursor.execute("ALTER TABLE listings ADD COLUMN raw_price REAL DEFAULT 0.0")
+    if "currency" not in existing_columns:
+        cursor.execute("ALTER TABLE listings ADD COLUMN currency TEXT DEFAULT 'USD'")
+    if "date_added" not in existing_columns:
+        cursor.execute("ALTER TABLE listings ADD COLUMN date_added TEXT")
+
     # Price History tracking table for Analytics
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS price_history (
@@ -79,7 +98,6 @@ st.markdown("""
         font-family: 'Inter', sans-serif;
     }
     
-    /* Custom Header Cards */
     .metric-card {
         background: #10151c;
         border: 1px solid #1e293b;
@@ -88,7 +106,6 @@ st.markdown("""
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
     }
     
-    /* Radar sweep accent */
     .radar-header {
         font-family: 'Space Grotesk', sans-serif;
         letter-spacing: -0.5px;
@@ -199,7 +216,6 @@ elif menu == "🔎 Global Search":
                             title = title_tag.get_text().strip()
                             link = link_tag.get('href', '')
                             
-                            # Mock estimation parser for extraction demonstration
                             price_val = 149.99
                             currency = st.session_state.get("pref_currency", "USD")
                             
@@ -248,7 +264,6 @@ elif menu == "🔎 Global Search":
                         ))
                         db_conn.commit()
                         
-                        # Fetch last inserted ID to log price history
                         last_id = cursor.lastrowid
                         cursor.execute("INSERT INTO price_history (listing_id, price, recorded_at) VALUES (?, ?, ?)", 
                                        (last_id, item['raw_price'], str(datetime.date.today())))
@@ -257,7 +272,7 @@ elif menu == "🔎 Global Search":
                         st.success("Asset cataloged successfully!")
                 st.markdown("---")
 
-# --- MODULE 3: WATCHLISTS & SAVED LISTINGS (Folders, Tags, Export) ---
+# --- MODULE 3: WATCHLISTS & SAVED LISTINGS ---
 elif menu == "🗂️ Watchlists & Saved":
     st.markdown("<h1 class='radar-header'>Saved Assets & Watchlists</h1>", unsafe_allow_html=True)
     
@@ -277,7 +292,6 @@ elif menu == "🗂️ Watchlists & Saved":
         df = pd.DataFrame(rows, columns=["ID", "Title", "Price", "Link", "Folder", "Tags", "Notes", "Date Added"])
         st.dataframe(df[["Title", "Price", "Folder", "Tags", "Notes", "Date Added"]], use_container_width=True)
         
-        # Automated Export Tools
         st.markdown("### Automated Export Matrix")
         col_e1, col_e2 = st.columns(2)
         with col_e1:
