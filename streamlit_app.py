@@ -122,85 +122,113 @@ def apply_affiliate_tag(url: str, domain: str) -> str:
 
 
 # ------------------------------------------------------------------
-# SEARCH BACKEND
-# Scraping DuckDuckGo's HTML page directly (the original approach) gets
-# unreliable fast on cloud hosts like Streamlit Cloud — search engines
-# rate-limit/block datacenter IPs, which shows up as empty results or a
-# non-200 status for no obvious reason. Google's Custom Search JSON API
-# is a real, ToS-compliant search API with a free tier (100 queries/day)
-# and doesn't have this problem. Add GOOGLE_SEARCH_API_KEY and
-# GOOGLE_SEARCH_CX to your Streamlit secrets to use it — full setup:
-# 1. https://console.cloud.google.com/ -> create a project -> enable
-#    "Custom Search API" -> create credentials -> API key.
-# 2. https://programmablesearchengine.google.com/ -> create a search
-#    engine -> under "Sites to search" choose "Search the entire web" ->
-#    copy its Search engine ID (that's GOOGLE_SEARCH_CX).
-# Without those secrets, this falls back to the DuckDuckGo scrape, which
-# still works sometimes but can't be relied on.
+# SEARCH BACKEND — tries three sources, cheapest/free-est first isn't
+# actually first here; it's ordered by RELIABILITY, falling back toward
+# free options so a real result is still likely even with $0 to spend:
+#
+# 1. Serper (serper.dev) — only used if you add a SERPER_API_KEY secret.
+#    Paid past its small free trial, but reliable. Add this once the site
+#    is earning something — it's the current best paid option (Google's
+#    old Custom Search API is closed to new signups as of 2025).
+# 2. A public SearXNG instance — free, no signup, no key required at all.
+#    Not guaranteed reliable (public instances get busy/rate-limited too)
+#    but costs nothing to try, so it's a free second attempt.
+# 3. Scraping DuckDuckGo's HTML page directly — free, no key, but the
+#    least reliable since cloud server IPs get blocked/rate-limited.
 # ------------------------------------------------------------------
 def fetch_search_results(query: str, num: int = 9):
     """Returns (results, warning_message). results is a list of dicts with
     title/url/snippet. warning_message is None on success, or a short
-    string explaining what went wrong."""
-    api_key = get_secret("GOOGLE_SEARCH_API_KEY")
-    cx = get_secret("GOOGLE_SEARCH_CX")
+    string explaining what went wrong (only set if EVERY source failed)."""
 
-    if api_key and cx:
+    warnings = []
+
+    # 1. Serper — paid, add SERPER_API_KEY once there's revenue to spend
+    serper_key = get_secret("SERPER_API_KEY")
+    if serper_key:
         try:
-            resp = requests.get(
-                "https://www.googleapis.com/customsearch/v1",
-                params={"key": api_key, "cx": cx, "q": query, "num": min(num, 10)},
+            resp = requests.post(
+                "https://google.serper.dev/search",
+                headers={"X-API-KEY": serper_key, "Content-Type": "application/json"},
+                json={"q": query, "num": num},
                 timeout=15
             )
             if resp.status_code == 200:
-                items = resp.json().get("items", [])
+                organic = resp.json().get("organic", [])
                 results = [
                     {"title": it.get("title", ""), "url": it.get("link", ""), "snippet": it.get("snippet", "")}
-                    for it in items
+                    for it in organic[:num]
                 ]
-                return results, None
-            else:
-                return [], f"Google Search API returned status {resp.status_code}: {resp.text[:200]}"
+                if results:
+                    return results, None
+            warnings.append(f"Serper returned status {resp.status_code}")
         except Exception as e:
-            return [], f"Google Search API error: {e}"
+            warnings.append(f"Serper error: {e}")
 
-    # Fallback: scrape DuckDuckGo's HTML page. Works sometimes, but cloud
-    # server IPs get blocked/rate-limited unpredictably — configure the
-    # Google API above for reliable results.
+    # 2. Free public SearXNG instances — no key needed, try a few in case
+    # one is down or rate-limiting right now
+    searx_instances = [
+        "https://searx.be/search",
+        "https://priv.au/search",
+        "https://searx.tiekoetter.com/search",
+    ]
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    for instance in searx_instances:
+        try:
+            resp = requests.get(
+                instance,
+                params={"q": query, "format": "json"},
+                headers=headers,
+                timeout=10
+            )
+            if resp.status_code == 200:
+                items = resp.json().get("results", [])[:num]
+                if items:
+                    results = [
+                        {"title": it.get("title", ""), "url": it.get("url", ""), "snippet": it.get("content", "")}
+                        for it in items
+                    ]
+                    return results, None
+        except Exception:
+            continue
+    warnings.append("Public SearXNG instances returned nothing")
+
+    # 3. Last resort: scrape DuckDuckGo's HTML page directly
     try:
         target_url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
         resp = requests.get(target_url, headers=headers, timeout=15)
 
-        if resp.status_code != 200:
-            return [], f"Search request came back with status {resp.status_code} instead of 200 — DuckDuckGo likely blocked or rate-limited this request. Configure GOOGLE_SEARCH_API_KEY / GOOGLE_SEARCH_CX in secrets for reliable search."
-
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        raw_results = soup.select(".result")[:num]
-        results = []
-        for res in raw_results:
-            title_elem = res.select_one(".result__title")
-            snippet_elem = res.select_one(".result__snippet")
-            link_elem = res.select_one(".result__url")
-            if not (title_elem and link_elem):
-                continue
-            raw_url = link_elem.get('href', '#')
-            if "uddg=" in raw_url:
-                parsed_link = urllib.parse.parse_qs(urllib.parse.urlparse(raw_url).query)
-                final_url = parsed_link.get("uddg", [raw_url])[0]
-            else:
-                final_url = raw_url
-            results.append({
-                "title": title_elem.get_text(strip=True),
-                "url": final_url,
-                "snippet": snippet_elem.get_text(strip=True) if snippet_elem else "",
-            })
-
-        if not results:
-            return [], "DuckDuckGo returned a page with no results, which usually means it silently blocked the request. Configure GOOGLE_SEARCH_API_KEY / GOOGLE_SEARCH_CX in secrets for reliable search."
-        return results, None
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            raw_results = soup.select(".result")[:num]
+            results = []
+            for res in raw_results:
+                title_elem = res.select_one(".result__title")
+                snippet_elem = res.select_one(".result__snippet")
+                link_elem = res.select_one(".result__url")
+                if not (title_elem and link_elem):
+                    continue
+                raw_url = link_elem.get('href', '#')
+                if "uddg=" in raw_url:
+                    parsed_link = urllib.parse.parse_qs(urllib.parse.urlparse(raw_url).query)
+                    final_url = parsed_link.get("uddg", [raw_url])[0]
+                else:
+                    final_url = raw_url
+                results.append({
+                    "title": title_elem.get_text(strip=True),
+                    "url": final_url,
+                    "snippet": snippet_elem.get_text(strip=True) if snippet_elem else "",
+                })
+            if results:
+                return results, None
+            warnings.append("DuckDuckGo returned a page with no results")
+        else:
+            warnings.append(f"DuckDuckGo returned status {resp.status_code}")
     except Exception as e:
-        return [], f"Search error: {e}"
+        warnings.append(f"DuckDuckGo error: {e}")
+
+    # Every source failed
+    return [], "All search sources failed — " + "; ".join(warnings) + ". This can be temporary; try again in a moment, or add a SERPER_API_KEY secret for a reliable paid option."
 
 # Page Configuration
 st.set_page_config(
