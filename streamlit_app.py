@@ -579,6 +579,42 @@ html_block("""
         box-shadow: 0 6px 20px rgba(255,122,61,0.28) !important;
         transform: translateY(-1px);
     }
+
+    /* Best-price badge on the cheapest result in a search */
+    .best-price-badge{
+        display: inline-flex; align-items: center; gap: 5px;
+        font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+        letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;
+        color: #0f1a14; background: var(--mint);
+        padding: 4px 10px; border-radius: 20px; margin-bottom: 10px;
+        box-shadow: 0 0 14px rgba(61,220,151,0.35);
+    }
+
+    /* Subtle page-load fade so switching between pages feels less abrupt */
+    .main .block-container{
+        animation: fadein .35s ease;
+    }
+    @keyframes fadein{
+        from{ opacity: 0; transform: translateY(4px); }
+        to{ opacity: 1; transform: translateY(0); }
+    }
+
+    /* Tabs (Favorites / Recent Searches / Full Log) themed to match */
+    .stTabs [data-baseweb="tab-list"]{
+        gap: 6px; border-bottom: 1px solid var(--line-soft);
+    }
+    .stTabs [data-baseweb="tab"]{
+        font-family: 'Space Grotesk', sans-serif !important;
+        font-weight: 600 !important; font-size: 14px !important;
+        color: var(--text-dim) !important;
+        background: transparent !important;
+        border-radius: 8px 8px 0 0 !important;
+        padding: 8px 16px !important;
+    }
+    .stTabs [aria-selected="true"]{
+        color: var(--amber) !important;
+        border-bottom: 2px solid var(--amber) !important;
+    }
     </style>
 """)
 
@@ -652,8 +688,83 @@ def init_db():
                 locked_until TIMESTAMP NULL
             )
         '''))
+        conn.execute(text(f'''
+            CREATE TABLE IF NOT EXISTS favorites (
+                {id_column},
+                username TEXT,
+                title TEXT,
+                price TEXT,
+                platform TEXT,
+                image_url TEXT,
+                url TEXT,
+                saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        '''))
+
+    # Lightweight migrations for columns added after the initial deploy.
+    # Each runs in its OWN transaction — if a column already exists, the
+    # ALTER fails and we swallow it, but on Postgres a failed statement
+    # poisons the rest of that transaction, so these can't share one.
+    def _safe_migrate(stmt):
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(stmt))
+        except Exception:
+            pass
+
+    _safe_migrate("ALTER TABLE listings ADD COLUMN username TEXT")
+    _safe_migrate("ALTER TABLE users ADD COLUMN preferred_currency TEXT DEFAULT 'USD'")
 
 init_db()
+
+CURRENCY_OPTIONS = ["USD", "EUR", "GBP", "KES", "NGN", "INR", "ZAR", "AED", "CAD", "AUD"]
+_CURRENCY_SYMBOL_MAP = {
+    "US$": "USD", "USD": "USD", "$": "USD",
+    "£": "GBP", "GBP": "GBP",
+    "€": "EUR", "EUR": "EUR",
+    "KES": "KES", "Ksh": "KES",
+    "R ": "ZAR", "ZAR": "ZAR",
+}
+
+@st.cache_data(ttl=3600)
+def fetch_exchange_rates():
+    """Free, no-key exchange rate feed, refreshed hourly. Returns an empty
+    dict on failure — callers just skip conversion rather than crash."""
+    try:
+        resp = requests.get("https://open.er-api.com/v6/latest/USD", timeout=8)
+        if resp.status_code == 200:
+            return resp.json().get("rates", {})
+    except Exception:
+        pass
+    return {}
+
+def convert_price_display(price_str, target_currency, rates):
+    """Best-effort currency conversion for a free-text price string like
+    '$799' or 'KES 45,000'. This is approximate — it's regex-parsing text,
+    not structured data — so it appends a converted estimate rather than
+    replacing the original price."""
+    if not price_str or not rates or target_currency not in rates:
+        return price_str
+    match = re.search(r'([\d,]+(?:\.\d{1,2})?)', price_str)
+    if not match:
+        return price_str
+    try:
+        amount = float(match.group(1).replace(",", ""))
+    except ValueError:
+        return price_str
+
+    source_currency = "USD"
+    for symbol, code in _CURRENCY_SYMBOL_MAP.items():
+        if symbol in price_str:
+            source_currency = code
+            break
+
+    if source_currency == target_currency or source_currency not in rates:
+        return price_str
+
+    usd_amount = amount / rates[source_currency]
+    converted = usd_amount * rates[target_currency]
+    return f"{price_str}  (≈ {converted:,.2f} {target_currency})"
 
 SECURITY_QUESTIONS = [
     "What was the name of your first pet?",
@@ -669,6 +780,50 @@ if "username" not in st.session_state:
     st.session_state.username = ""
 if "nav_choice" not in st.session_state:
     st.session_state.nav_choice = "🏠 Home"
+if "currency" not in st.session_state:
+    st.session_state.currency = "USD"
+if "prefill_search" not in st.session_state:
+    st.session_state.prefill_search = ""
+if "admin_bypass" not in st.session_state:
+    st.session_state.admin_bypass = False
+
+# ------------------------------------------------------------------
+# LAUNCH GATE
+# Keeps the site closed to everyone until LAUNCH_DATE, then opens on its
+# own — no need to remember to flip a switch. Override the date via a
+# LAUNCH_DATE secret (ISO format, e.g. "2026-11-23T00:00:00") if plans
+# change. Enter ADMIN_ACCESS_CODE (set as a secret) on the closed screen
+# to keep testing the app yourself while it's locked for everyone else.
+# ------------------------------------------------------------------
+try:
+    LAUNCH_DATE = datetime.fromisoformat(get_secret("LAUNCH_DATE", "2026-11-23T00:00:00"))
+except ValueError:
+    LAUNCH_DATE = datetime(2026, 11, 23)
+
+ADMIN_ACCESS_CODE = get_secret("ADMIN_ACCESS_CODE")
+site_is_locked = datetime.utcnow() < LAUNCH_DATE and not st.session_state.admin_bypass
+
+if site_is_locked:
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    col_l1, col_l2, col_l3 = st.columns([1, 1.2, 1])
+    with col_l2:
+        st.markdown("<div class='card-box'>", unsafe_allow_html=True)
+        render_radar_header(
+            "<h2 style='margin:0;'>APEX GLOBAL PORTAL</h2>",
+            f"We're putting the finishing touches on things. Check back on {LAUNCH_DATE.strftime('%B %d, %Y')}.",
+            eyebrow="Coming Soon"
+        )
+        if ADMIN_ACCESS_CODE:
+            with st.expander("Owner access"):
+                entered_code = st.text_input("Access code", type="password", label_visibility="collapsed", placeholder="Access code")
+                if st.button("Unlock"):
+                    if entered_code == ADMIN_ACCESS_CODE:
+                        st.session_state.admin_bypass = True
+                        st.rerun()
+                    else:
+                        st.error("Incorrect code.")
+        st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
 
 # --- AUTHENTICATION SCREEN ---
 if not st.session_state.logged_in:
@@ -756,6 +911,7 @@ if not st.session_state.logged_in:
                             st.session_state.logged_in = True
                             st.session_state.username = input_user
                             st.session_state.nav_choice = "🏠 Home"
+                            st.session_state.currency = user_record["preferred_currency"] or "USD"
                             st.success("Login successful! Welcome back.")
                             st.rerun()
                         else:
@@ -906,11 +1062,13 @@ else:
         with col_search:
             search_term = st.text_input(
                 "Search",
+                value=st.session_state.prefill_search,
                 placeholder="e.g. iPhone 15 Pro, BMW M4, gaming laptop, leather sofa...",
                 label_visibility="collapsed"
             )
         with col_btn:
             submit_btn = st.button("🚀 Search", use_container_width=True)
+        st.session_state.prefill_search = ""
 
         with st.expander("🎯 Refine your search (optional)"):
             col_site, col_country = st.columns(2)
@@ -993,7 +1151,8 @@ else:
                                 "description": description or "No description available — open the listing for details.",
                                 "image_url": image_url,
                                 "url": final_url,
-                                "search_query": search_term
+                                "search_query": search_term,
+                                "username": st.session_state.username,
                             })
 
                         if scraped_data:
@@ -1001,64 +1160,168 @@ else:
                                 for row in scraped_data:
                                     conn.execute(
                                         text('''INSERT INTO listings
-                                                (title, price, product_type, platform, description, image_url, url, search_query)
-                                                VALUES (:title, :price, :product_type, :platform, :description, :image_url, :url, :search_query)'''),
+                                                (title, price, product_type, platform, description, image_url, url, search_query, username)
+                                                VALUES (:title, :price, :product_type, :platform, :description, :image_url, :url, :search_query, :username)'''),
                                         row
                                     )
 
                             st.success(f"Found {len(scraped_data)} real matches for '{search_term}'.")
-                            html_block('<div class="section-label">Results</div>')
-                            st.caption("Some links below are affiliate links — we may earn a commission on qualifying purchases at no extra cost to you.")
+                            st.session_state["last_results"] = scraped_data
 
-                            result_cols = st.columns(3)
-                            for idx, row in enumerate(scraped_data):
-                                with result_cols[idx % 3]:
-                                    with st.container(border=True):
-                                        st.image(row['image_url'], use_container_width=True)
-                                        html_block(f"""
-                                            <div class="result-platform">{row['platform']}</div>
-                                            <div class="result-title">{row['title'][:70]}</div>
-                                            <div class="result-price">{row['price']}</div>
-                                        """)
-                                        st.link_button("🔗 View & Buy", row['url'], use_container_width=True)
                         else:
+                            st.session_state["last_results"] = []
                             st.info("No direct matches found for that search. Try a different phrase, remove the site/country filter, or check the spelling.")
 
                     except Exception as e:
                         st.error(f"Execution error: {e}")
 
-    # 📂 Saved Data View
+        # Render whatever the last search produced — kept outside the
+        # submit block so favorite/currency clicks below don't wipe results
+        # on rerun.
+        scraped_data = st.session_state.get("last_results", [])
+        if scraped_data:
+            rates = fetch_exchange_rates()
+            currency = st.session_state.currency
+
+            # Figure out the cheapest parseable price so we can badge it —
+            # purely a nice-to-have, results with no parseable price are
+            # just skipped for this comparison.
+            def _numeric_price(p):
+                m = re.search(r'([\d,]+(?:\.\d{1,2})?)', p["price"])
+                return float(m.group(1).replace(",", "")) if m else None
+            priced = [(i, _numeric_price(r)) for i, r in enumerate(scraped_data)]
+            priced = [(i, v) for i, v in priced if v is not None]
+            best_idx = min(priced, key=lambda x: x[1])[0] if priced else None
+
+            html_block('<div class="section-label">Results</div>')
+            st.caption("Some links below are affiliate links — we may earn a commission on qualifying purchases at no extra cost to you.")
+
+            result_cols = st.columns(3)
+            for idx, row in enumerate(scraped_data):
+                with result_cols[idx % 3]:
+                    with st.container(border=True):
+                        st.image(row['image_url'], use_container_width=True)
+                        badge = '<div class="best-price-badge">🏆 Best Price</div>' if idx == best_idx else ''
+                        html_block(f"""
+                            {badge}
+                            <div class="result-platform">{row['platform']}</div>
+                            <div class="result-title">{row['title'][:70]}</div>
+                            <div class="result-price">{convert_price_display(row['price'], currency, rates)}</div>
+                        """)
+                        col_buy, col_fav = st.columns([3, 1])
+                        with col_buy:
+                            st.link_button("🔗 View & Buy", row['url'], use_container_width=True)
+                        with col_fav:
+                            if st.button("♡", key=f"fav_{idx}", use_container_width=True, help="Save to favorites"):
+                                with engine.begin() as conn:
+                                    conn.execute(
+                                        text('''INSERT INTO favorites (username, title, price, platform, image_url, url)
+                                                VALUES (:username, :title, :price, :platform, :image_url, :url)'''),
+                                        {"username": st.session_state.username, "title": row["title"],
+                                         "price": row["price"], "platform": row["platform"],
+                                         "image_url": row["image_url"], "url": row["url"]}
+                                    )
+                                st.toast("Saved to favorites ❤️")
+
+            # Side-by-side price comparison table
+            with st.expander("📊 Compare all results side-by-side"):
+                compare_df = pd.DataFrame([{
+                    "Platform": r["platform"],
+                    "Title": r["title"][:60],
+                    "Price": r["price"],
+                    f"≈ {currency}": convert_price_display(r["price"], currency, rates),
+                    "Link": r["url"],
+                } for r in scraped_data])
+                st.dataframe(
+                    compare_df,
+                    column_config={"Link": st.column_config.LinkColumn("Buy Link", display_text="🔗 Open")},
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+
     elif menu == "🗂️ Saved Listings":
         render_radar_header(
-            "<h1 style='margin:0;'>Saved Global Database Repository</h1>",
-            "Review all accumulated multi-platform records, preview images, and download complete data spreadsheets.",
+            "<h1 style='margin:0;'>Saved Listings</h1>",
+            "Your favorites, your recent searches, and your full search history in one place.",
             eyebrow="Archive"
         )
 
-        df_all = pd.read_sql(
-            text("SELECT image_url, title, price, platform, product_type, description, url, timestamp FROM listings ORDER BY timestamp DESC"),
-            engine
-        )
+        tab_favorites, tab_history, tab_log = st.tabs(["❤️ Favorites", "🕓 Recent Searches", "📦 Full Log"])
 
-        if not df_all.empty:
-            st.dataframe(
-                df_all,
-                column_config={
-                    "image_url": st.column_config.ImageColumn("Preview", width="small"),
-                    "url": st.column_config.LinkColumn("Buy Link", display_text="🔗 Buy Now")
-                },
-                use_container_width=True
+        with tab_favorites:
+            favorites_df = pd.read_sql(
+                text("SELECT id, image_url, title, price, platform, url, saved_at FROM favorites WHERE username = :u ORDER BY saved_at DESC"),
+                engine, params={"u": st.session_state.username}
+            )
+            if favorites_df.empty:
+                st.info("Nothing saved yet — tap the ♡ button on any search result to save it here.")
+            else:
+                rates = fetch_exchange_rates()
+                fav_cols = st.columns(3)
+                for idx, fav in favorites_df.iterrows():
+                    with fav_cols[idx % 3]:
+                        with st.container(border=True):
+                            st.image(fav['image_url'], use_container_width=True)
+                            html_block(f"""
+                                <div class="result-platform">{fav['platform']}</div>
+                                <div class="result-title">{fav['title'][:70]}</div>
+                                <div class="result-price">{convert_price_display(fav['price'], st.session_state.currency, rates)}</div>
+                            """)
+                            col_buy, col_del = st.columns([3, 1])
+                            with col_buy:
+                                st.link_button("🔗 View & Buy", fav['url'], use_container_width=True)
+                            with col_del:
+                                if st.button("🗑️", key=f"del_fav_{fav['id']}", use_container_width=True, help="Remove"):
+                                    with engine.begin() as conn:
+                                        conn.execute(text("DELETE FROM favorites WHERE id = :id"), {"id": int(fav['id'])})
+                                    st.rerun()
+
+        with tab_history:
+            history_df = pd.read_sql(
+                text('''SELECT search_query, MAX(timestamp) AS last_searched
+                        FROM listings WHERE username = :u
+                        GROUP BY search_query ORDER BY last_searched DESC LIMIT 15'''),
+                engine, params={"u": st.session_state.username}
+            )
+            if history_df.empty:
+                st.info("No searches yet — anything you search for shows up here for quick reuse.")
+            else:
+                for idx, hist in history_df.iterrows():
+                    col_q, col_go = st.columns([4, 1])
+                    with col_q:
+                        st.write(f"🔎 **{hist['search_query']}**")
+                    with col_go:
+                        if st.button("Search again", key=f"rerun_search_{idx}", use_container_width=True):
+                            st.session_state.prefill_search = hist['search_query']
+                            st.session_state.nav_choice = "🔎 Search"
+                            st.rerun()
+
+        with tab_log:
+            df_all = pd.read_sql(
+                text("SELECT image_url, title, price, platform, product_type, description, url, timestamp FROM listings WHERE username = :u ORDER BY timestamp DESC"),
+                engine, params={"u": st.session_state.username}
             )
 
-            csv_data = df_all.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Download Master Dataset (CSV)",
-                data=csv_data,
-                file_name='universal_global_scraper_master.csv',
-                mime='text/csv',
-            )
-        else:
-            st.info("Your database is currently empty. Run a live scrape to populate entries.")
+            if not df_all.empty:
+                st.dataframe(
+                    df_all,
+                    column_config={
+                        "image_url": st.column_config.ImageColumn("Preview", width="small"),
+                        "url": st.column_config.LinkColumn("Buy Link", display_text="🔗 Buy Now")
+                    },
+                    use_container_width=True
+                )
+
+                csv_data = df_all.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download My Search History (CSV)",
+                    data=csv_data,
+                    file_name='my_search_history.csv',
+                    mime='text/csv',
+                )
+            else:
+                st.info("Your search log is empty. Run a search to populate this.")
 
     # ⚙️ Preferences View
     elif menu == "⚙️ Preferences":
@@ -1067,10 +1330,21 @@ else:
             "Manage app preferences, your subscription, and legal information.",
             eyebrow="Settings"
         )
-        st.text_input("Default Global Currency", value="USD ($) / KES (Ksh)")
+        selected_currency = st.selectbox(
+            "Display Currency",
+            CURRENCY_OPTIONS,
+            index=CURRENCY_OPTIONS.index(st.session_state.currency) if st.session_state.currency in CURRENCY_OPTIONS else 0,
+            help="Prices are shown in their original currency plus an approximate conversion to this one."
+        )
         st.selectbox("Default Export File Type", ["CSV (.csv)", "Excel (.xlsx)"])
         if st.button("Save Configuration Settings"):
-            st.success("Global preferences saved successfully!")
+            st.session_state.currency = selected_currency
+            with engine.begin() as conn:
+                conn.execute(
+                    text("UPDATE users SET preferred_currency = :c WHERE username = :u"),
+                    {"c": selected_currency, "u": st.session_state.username}
+                )
+            st.success("Preferences saved successfully!")
 
         html_block('<div class="section-label">Upgrade</div>')
         stripe_key = get_secret("STRIPE_SECRET_KEY")
