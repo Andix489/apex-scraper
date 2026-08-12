@@ -1008,6 +1008,7 @@ else:
 
                             st.success(f"Found {len(scraped_data)} real matches for '{search_term}'.")
                             html_block('<div class="section-label">Results</div>')
+                            st.caption("Some links below are affiliate links — we may earn a commission on qualifying purchases at no extra cost to you.")
 
                             result_cols = st.columns(3)
                             for idx, row in enumerate(scraped_data):
@@ -1123,5 +1124,14 @@ This is a starting template only — have it reviewed by a lawyer before accepti
 
 **Third parties.** Search results link out to third-party marketplaces; their own privacy policies apply once you leave this app.
 
+**Affiliate disclosure.** Some outbound links on this site are affiliate links. If you click one and make a purchase, we may earn a commission at no extra cost to you.
+
 **Your rights.** You can request deletion of your account and associated data at any time by contacting support.
+            """)
+
+        with st.expander("💬 Affiliate Disclosure"):
+            st.markdown("""
+This site is a participant in affiliate programs including the Amazon Services LLC Associates Program, an affiliate advertising program designed to provide a means for sites to earn advertising fees by advertising and linking to Amazon.com and affiliated sites, as well as other affiliate programs listed above under "Upgrade" and search results.
+
+As an Associate, we earn from qualifying purchases made through links on this site. This never affects the price you pay.
             """)
