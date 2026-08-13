@@ -239,8 +239,9 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------------
-# CONSOLE / RADAR THEME
-# Palette: ink #090c11, panel #10151c, amber #ff7a3d, mint #3ddc97
+# PRICERADAR THEME — v2: violet primary + coral accent, dark ink base
+# Palette: ink #0a0b14, panel #12131f, violet #8B5CF6 (was amber),
+# coral #FF6B4A (new — deals/highlights), mint #3ddc97 (status)
 # Type: Space Grotesk (display), Inter (body), JetBrains Mono (data/labels)
 # ------------------------------------------------------------------
 html_block("""
@@ -248,16 +249,18 @@ html_block("""
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
     :root{
-        --bg: #090c11;
-        --panel: #10151c;
-        --panel-2: #141a22;
-        --line: #232b35;
-        --line-soft: #1a2029;
-        --text: #e9ecf1;
-        --text-dim: #7c8797;
-        --text-faint: #4a5361;
-        --amber: #ff7a3d;
-        --amber-dim: #a5501f;
+        --bg: #0a0b14;
+        --panel: #12131f;
+        --panel-2: #171829;
+        --line: #262840;
+        --line-soft: #1c1d30;
+        --text: #eef0fb;
+        --text-dim: #8b8fae;
+        --text-faint: #52546f;
+        --amber: #8B5CF6;
+        --amber-dim: #5B3FD6;
+        --coral: #FF6B4A;
+        --coral-dim: #C2431F;
         --mint: #3ddc97;
     }
 
@@ -268,8 +271,8 @@ html_block("""
     }
     .stApp{
         background-image:
-            radial-gradient(circle at 15% 8%, rgba(255,122,61,0.06), transparent 40%),
-            radial-gradient(circle at 85% 92%, rgba(61,220,151,0.05), transparent 40%);
+            radial-gradient(circle at 15% 8%, rgba(139,92,246,0.10), transparent 40%),
+            radial-gradient(circle at 85% 92%, rgba(255,107,74,0.07), transparent 40%);
     }
 
     /* Headings */
@@ -297,25 +300,28 @@ html_block("""
         color: var(--text-dim) !important;
     }
 
-    /* Text inputs */
+    /* Text inputs -> soft glass pill, used everywhere for consistency */
     .stTextInput input, .stTextArea textarea{
-        background-color: #0b0f15 !important;
+        background-color: rgba(23,24,41,0.75) !important;
+        backdrop-filter: blur(6px);
         border: 1px solid var(--line) !important;
-        border-radius: 8px !important;
+        border-radius: 999px !important;
+        padding: 0.65rem 1.3rem !important;
         color: var(--text) !important;
         font-family: 'Inter', sans-serif !important;
     }
+    .stTextArea textarea{ border-radius: 18px !important; }
     .stTextInput input:focus, .stTextArea textarea:focus{
-        border-color: var(--amber-dim) !important;
-        box-shadow: 0 0 0 3px rgba(255,122,61,0.12) !important;
+        border-color: var(--amber) !important;
+        box-shadow: 0 0 0 4px rgba(139,92,246,0.16) !important;
     }
     .stTextInput input::placeholder{ color: var(--text-faint) !important; }
 
     /* Selectboxes */
     [data-baseweb="select"] > div{
-        background-color: #0b0f15 !important;
+        background-color: rgba(23,24,41,0.75) !important;
         border: 1px solid var(--line) !important;
-        border-radius: 8px !important;
+        border-radius: 18px !important;
         color: var(--text) !important;
     }
     [data-baseweb="popover"] li{
@@ -331,21 +337,21 @@ html_block("""
         color: var(--text-dim) !important;
     }
 
-    /* Buttons -> amber, Space Grotesk, like run-btn */
+    /* Buttons -> violet, pill-shaped, Space Grotesk */
     .stButton > button, .stFormSubmitButton > button{
-        border-radius: 8px !important;
+        border-radius: 999px !important;
         font-family: 'Space Grotesk', sans-serif !important;
         font-weight: 600 !important;
-        background: var(--amber) !important;
-        color: #1a0e06 !important;
+        background: linear-gradient(135deg, var(--amber), var(--amber-dim)) !important;
+        color: #ffffff !important;
         border: none !important;
         padding: 0.7rem 1.6rem !important;
-        box-shadow: 0 0 0 rgba(255,122,61,0) !important;
+        box-shadow: 0 0 0 rgba(139,92,246,0) !important;
         transition: transform .12s ease, box-shadow .12s ease, background .12s ease !important;
     }
     .stButton > button:hover, .stFormSubmitButton > button:hover{
-        background: #ff8a53 !important;
-        box-shadow: 0 6px 24px rgba(255,122,61,0.28) !important;
+        background: #a586ff !important;
+        box-shadow: 0 6px 24px rgba(139,92,246,0.28) !important;
         transform: translateY(-1px);
     }
 
@@ -367,20 +373,25 @@ html_block("""
         opacity: 0.85;
     }
 
-    /* Card box (login) */
+    /* Card box (login) -> rounder, warmer, with a soft decorative glow
+       behind it instead of a flat panel */
     .card-box{
         background: var(--panel) !important;
         border: 1px solid var(--line) !important;
-        border-radius: 14px !important;
-        padding: 28px 26px !important;
+        border-radius: 28px !important;
+        padding: 36px 32px !important;
         position: relative;
+        box-shadow: 0 30px 70px -20px rgba(139,92,246,0.25);
     }
     .card-box::before{
         content: '';
-        position: absolute; top: 0; left: 0; right: 0; height: 2px;
-        background: linear-gradient(90deg, var(--amber), transparent 60%);
-        border-radius: 14px 14px 0 0;
-        opacity: 0.85;
+        position: absolute; top: -60px; left: -40px; right: -40px; height: 160px;
+        background:
+            radial-gradient(circle at 20% 30%, rgba(139,92,246,0.35), transparent 60%),
+            radial-gradient(circle at 80% 30%, rgba(255,107,74,0.25), transparent 60%);
+        border-radius: 50%;
+        z-index: -1;
+        filter: blur(10px);
     }
 
     /* Ticker */
@@ -433,7 +444,7 @@ html_block("""
     .radar::after{ inset: 20px; }
     .radar-sweep{
         position: absolute; inset: 0; border-radius: 50%;
-        background: conic-gradient(from 0deg, rgba(255,122,61,0.55), transparent 34%);
+        background: conic-gradient(from 0deg, rgba(139,92,246,0.55), transparent 34%);
         animation: sweep 3.4s linear infinite;
         mix-blend-mode: screen;
     }
@@ -476,7 +487,7 @@ html_block("""
         border-radius: 10px; overflow: hidden; margin-top: 18px;
     }
     .strip div{ background: var(--panel); padding: 16px 20px; }
-    .strip .num{ font-family: 'Space Grotesk', sans-serif; font-size: 21px; font-weight: 700; color: var(--text); }
+    .strip .num{ font-family: 'Space Grotesk', sans-serif; font-size: 21px; font-weight: 700; color: var(--amber); }
     .strip .lbl{ font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin-top: 3px; }
 
     /* Hero (landing page) */
@@ -532,14 +543,17 @@ html_block("""
     [data-testid="stVerticalBlockBorderWrapper"]:hover{
         transform: translateY(-3px);
         border-color: var(--amber-dim) !important;
-        box-shadow: 0 12px 28px rgba(255,122,61,0.14);
+        box-shadow: 0 12px 28px rgba(139,92,246,0.14);
     }
     .feature-icon{
-        width: 46px; height: 46px; border-radius: 12px;
+        width: 46px; height: 46px; border-radius: 14px;
         display: flex; align-items: center; justify-content: center;
         background: var(--panel-2); border: 1px solid var(--line);
         font-size: 21px; margin-bottom: 14px;
     }
+    .feature-icon.violet{ background: rgba(139,92,246,0.15); border-color: rgba(139,92,246,0.35); }
+    .feature-icon.coral{ background: rgba(255,107,74,0.15); border-color: rgba(255,107,74,0.35); }
+    .feature-icon.mint{ background: rgba(61,220,151,0.15); border-color: rgba(61,220,151,0.35); }
     .feature-title{
         font-family: 'Space Grotesk', sans-serif !important;
         font-weight: 600 !important; font-size: 17px;
@@ -568,13 +582,13 @@ html_block("""
         font-size: 17px; color: var(--amber); margin-bottom: 10px;
     }
 
-    /* Buy Now link buttons -> same amber treatment as regular buttons */
+    /* Buy Now link buttons -> same violet treatment as regular buttons */
     .stLinkButton > a, [data-testid="stLinkButton"] a{
-        border-radius: 8px !important;
+        border-radius: 999px !important;
         font-family: 'Space Grotesk', sans-serif !important;
         font-weight: 600 !important;
-        background: var(--amber) !important;
-        color: #1a0e06 !important;
+        background: linear-gradient(135deg, var(--amber), var(--amber-dim)) !important;
+        color: #ffffff !important;
         border: none !important;
         text-decoration: none !important;
         display: flex !important;
@@ -583,8 +597,8 @@ html_block("""
         transition: background .12s ease, box-shadow .12s ease, transform .12s ease;
     }
     .stLinkButton > a:hover, [data-testid="stLinkButton"] a:hover{
-        background: #ff8a53 !important;
-        box-shadow: 0 6px 20px rgba(255,122,61,0.28) !important;
+        background: #a586ff !important;
+        box-shadow: 0 6px 20px rgba(139,92,246,0.28) !important;
         transform: translateY(-1px);
     }
 
@@ -593,9 +607,9 @@ html_block("""
         display: inline-flex; align-items: center; gap: 5px;
         font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
         letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600;
-        color: #0f1a14; background: var(--mint);
+        color: #2b0e04; background: var(--coral);
         padding: 4px 10px; border-radius: 20px; margin-bottom: 10px;
-        box-shadow: 0 0 14px rgba(61,220,151,0.35);
+        box-shadow: 0 0 14px rgba(255,107,74,0.4);
     }
 
     /* Subtle page-load fade so switching between pages feels less abrupt */
@@ -842,7 +856,7 @@ if not st.session_state.logged_in:
         st.markdown("<div class='card-box'>", unsafe_allow_html=True)
         render_radar_header(
             "<h2 style='margin:0;'>PRICERADAR</h2>",
-            "Sign in or create an account to access the scraper engine.",
+            "Sign in to start comparing prices across the globe.",
             eyebrow="Access Manifest"
         )
 
@@ -1029,17 +1043,17 @@ else:
         html_block('<div class="section-label">Quick Access</div>')
 
         features = [
-            ("🔎", "Search", "Search live inventory across dozens of global marketplaces and dealer networks at once.", "🔎 Search", "Start Searching"),
-            ("🗂️", "Saved Listings", "Browse, filter and export every listing you've collected so far.", "🗂️ Saved Listings", "View Saved"),
-            ("⚙️", "Preferences", "Set your default currency and export format for the whole app.", "⚙️ Preferences", "Open Preferences"),
+            ("🔎", "Search", "Search live inventory across dozens of global marketplaces and dealer networks at once.", "🔎 Search", "Start Searching", "violet"),
+            ("🗂️", "Saved Listings", "Browse, filter and export every listing you've collected so far.", "🗂️ Saved Listings", "View Saved", "coral"),
+            ("⚙️", "Preferences", "Set your default currency and export format for the whole app.", "⚙️ Preferences", "Open Preferences", "mint"),
         ]
 
         card_cols = st.columns(3)
-        for col, (icon, title, desc, target, btn_label) in zip(card_cols, features):
+        for col, (icon, title, desc, target, btn_label, accent) in zip(card_cols, features):
             with col:
                 with st.container(border=True):
                     html_block(f"""
-                        <div class="feature-icon">{icon}</div>
+                        <div class="feature-icon {accent}">{icon}</div>
                         <div class="feature-title">{title}</div>
                         <div class="feature-desc">{desc}</div>
                     """)
@@ -1054,6 +1068,24 @@ else:
                 <div><div class="num">&lt;4s</div><div class="lbl">Avg. Response Time</div></div>
             </div>
         """)
+
+        # Trending Searches — real data, not decorative: whatever people
+        # across the whole site have searched for most recently
+        trending_df = pd.read_sql(
+            text('''SELECT search_query, COUNT(*) AS times_searched
+                    FROM listings GROUP BY search_query
+                    ORDER BY MAX(timestamp) DESC LIMIT 8'''),
+            engine
+        )
+        if not trending_df.empty:
+            html_block('<div class="section-label">Trending Searches</div>')
+            trend_cols = st.columns(4)
+            for idx, trend in trending_df.iterrows():
+                with trend_cols[idx % 4]:
+                    if st.button(f"🔥 {trend['search_query']}", key=f"trend_{idx}", use_container_width=True):
+                        st.session_state.prefill_search = trend['search_query']
+                        st.session_state.nav_choice = "🔎 Search"
+                        st.rerun()
 
         html_block('<div class="footer-tagline">Search smarter. Buy better.</div>')
 
@@ -1078,6 +1110,23 @@ else:
         with col_btn:
             submit_btn = st.button("🚀 Search", use_container_width=True)
         st.session_state.prefill_search = ""
+
+        # Category quick-filters — tap one to prefill a search rather than
+        # typing from scratch
+        category_chips = [
+            ("📱", "Phones", "smartphone"),
+            ("💻", "Laptops", "laptop"),
+            ("🚗", "Vehicles", "car"),
+            ("👗", "Fashion", "clothing"),
+            ("🛋️", "Home", "furniture"),
+            ("🎧", "Audio", "headphones"),
+        ]
+        chip_cols = st.columns(len(category_chips))
+        for col, (icon, label, term) in zip(chip_cols, category_chips):
+            with col:
+                if st.button(f"{icon} {label}", key=f"chip_{term}", use_container_width=True):
+                    st.session_state.prefill_search = term
+                    st.rerun()
 
         with st.expander("🎯 Refine your search (optional)"):
             col_site, col_country = st.columns(2)
@@ -1192,17 +1241,30 @@ else:
             rates = fetch_exchange_rates()
             currency = st.session_state.currency
 
-            # Figure out the cheapest parseable price so we can badge it —
-            # purely a nice-to-have, results with no parseable price are
-            # just skipped for this comparison.
             def _numeric_price(p):
                 m = re.search(r'([\d,]+(?:\.\d{1,2})?)', p["price"])
                 return float(m.group(1).replace(",", "")) if m else None
+
+            col_label, col_sort = st.columns([3, 1.4])
+            with col_label:
+                html_block('<div class="section-label">Results</div>')
+            with col_sort:
+                sort_choice = st.selectbox(
+                    "Sort", ["Best match", "Price: Low to High", "Price: High to Low"],
+                    label_visibility="collapsed"
+                )
+            if sort_choice == "Price: Low to High":
+                scraped_data = sorted(scraped_data, key=lambda r: (_numeric_price(r) is None, _numeric_price(r) or 0))
+            elif sort_choice == "Price: High to Low":
+                scraped_data = sorted(scraped_data, key=lambda r: (_numeric_price(r) is None, -(_numeric_price(r) or 0)))
+
+            # Figure out the cheapest parseable price so we can badge it —
+            # purely a nice-to-have, results with no parseable price are
+            # just skipped for this comparison.
             priced = [(i, _numeric_price(r)) for i, r in enumerate(scraped_data)]
             priced = [(i, v) for i, v in priced if v is not None]
             best_idx = min(priced, key=lambda x: x[1])[0] if priced else None
 
-            html_block('<div class="section-label">Results</div>')
             st.caption("Some links below are affiliate links — we may earn a commission on qualifying purchases at no extra cost to you.")
 
             result_cols = st.columns(3)
@@ -1335,8 +1397,8 @@ else:
     # ⚙️ Preferences View
     elif menu == "⚙️ Preferences":
         render_radar_header(
-            "<h1 style='margin:0;'>System Configuration</h1>",
-            "Manage app preferences, your subscription, and legal information.",
+            "<h1 style='margin:0;'>Your Preferences</h1>",
+            "Currency, plan, and the legal fine print — all in one place.",
             eyebrow="Settings"
         )
         selected_currency = st.selectbox(
