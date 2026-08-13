@@ -232,8 +232,8 @@ def fetch_search_results(query: str, num: int = 9):
 
 # Page Configuration
 st.set_page_config(
-    page_title="Apex Global Scraper - Universal Intelligence",
-    page_icon="⚡",
+    page_title="PriceRadar — Global Product & Vehicle Search",
+    page_icon="🛰️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -461,6 +461,14 @@ html_block("""
     }
     @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
 
+    /* Sidebar brand lockup */
+    .sidebar-brand{
+        font-family: 'Space Grotesk', sans-serif !important;
+        font-weight: 700 !important; font-size: 19px;
+        letter-spacing: -0.01em; color: var(--text) !important;
+        margin-bottom: 14px;
+    }
+
     /* Stats strip */
     .strip{
         display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
@@ -484,8 +492,8 @@ html_block("""
         border: 1px solid var(--line);
     }
     .hero-title{
-        font-size: 3.4rem; font-weight: 700; color: #ffffff;
-        line-height: 1.1; letter-spacing: -0.01em;
+        font-size: 2.7rem; font-weight: 700; color: #ffffff;
+        line-height: 1.15; letter-spacing: -0.01em;
         text-shadow: 0 4px 12px rgba(0,0,0,0.6);
     }
     .hero-subtitle{
@@ -809,7 +817,7 @@ if site_is_locked:
     with col_l2:
         st.markdown("<div class='card-box'>", unsafe_allow_html=True)
         render_radar_header(
-            "<h2 style='margin:0;'>APEX GLOBAL PORTAL</h2>",
+            "<h2 style='margin:0;'>PRICERADAR</h2>",
             f"We're putting the finishing touches on things. Check back on {LAUNCH_DATE.strftime('%B %d, %Y')}.",
             eyebrow="Coming Soon"
         )
@@ -833,7 +841,7 @@ if not st.session_state.logged_in:
     with col_center2:
         st.markdown("<div class='card-box'>", unsafe_allow_html=True)
         render_radar_header(
-            "<h2 style='margin:0;'>APEX GLOBAL PORTAL</h2>",
+            "<h2 style='margin:0;'>PRICERADAR</h2>",
             "Sign in or create an account to access the scraper engine.",
             eyebrow="Access Manifest"
         )
@@ -972,8 +980,9 @@ if not st.session_state.logged_in:
 else:
     # Sidebar Navigation Hub synced with session state
     sidebar_html_block(f"""
+        <div class="sidebar-brand">🛰️ PriceRadar</div>
         <div class="status-pill"><span class="dot"></span>Feeds Online</div>
-        <h3 style='margin-top:14px;'>⚡ {st.session_state.username}</h3>
+        <h3 style='margin-top:14px;'>👋 {st.session_state.username}</h3>
     """)
     st.sidebar.markdown("---")
 
@@ -999,7 +1008,7 @@ else:
         # in the sidebar and in the feature cards below, so this stays clean.
         col_logo, col_status = st.columns([2, 1])
         with col_logo:
-            st.markdown("### ⚡ **Apex Global**")
+            st.markdown("### 🛰️ **PriceRadar**")
         with col_status:
             html_block(f"""
                 <div style="text-align:right; margin-top:8px;">
@@ -1010,9 +1019,9 @@ else:
         # Radar Hero Section
         html_block("""
             <div class="hero-container">
-                <div class="eyebrow" style="margin-bottom:16px;">Universal Inventory Interface</div>
-                <div class="hero-title">WORLDWIDE STORE<br>&amp; VEHICLE INTELLIGENCE.</div>
-                <div class="hero-subtitle">Instantly scan global store inventories and vehicle listings across dozens of platforms at once. Compare live prices, preview images, and jump straight to the source.</div>
+                <div class="eyebrow" style="margin-bottom:16px;">One Search. Every Marketplace.</div>
+                <div class="hero-title">FIND IT.<br>COMPARE IT.<br>&amp; BUY IT.</div>
+                <div class="hero-subtitle">PriceRadar scans stores and dealer networks across the globe at once — real photos, real prices where available, and a direct link to buy.</div>
             </div>
         """)
 
@@ -1046,7 +1055,7 @@ else:
             </div>
         """)
 
-        html_block('<div class="footer-tagline">You\'re part of the family</div>')
+        html_block('<div class="footer-tagline">Search smarter. Buy better.</div>')
 
     # 🔎 Search View
     elif menu == "🔎 Search":
